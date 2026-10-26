@@ -31,6 +31,9 @@ cd native/avtool/build/bin/Release
 ./ak_smoke.exe transcode <in> <out> <work_dir> [--hardware off|auto|on]
               [--codec h264|hevc] [--quality N] [--cancel-ms N] [--overwrite]
 ./ak_smoke.exe queue <in> <out_dir> <work_dir> <count> [--hardware off|auto|on]
+./ak_smoke.exe remux <in> <out> <work_dir> [--overwrite]
+./ak_smoke.exe extract <in> <out> <work_dir> [--codec aac|mp3|copy]
+              [--bitrate N] [--overwrite]
 ```
 
 - `version`: ABI、shim/avox/ffmpeg 版本与配置哈希。
@@ -39,6 +42,8 @@ cd native/avtool/build/bin/Release
 - `probe`: libavformat 直接探测, 不启动引擎。
 - `transcode`: 单文件转码; 事件会逐条打印(`[event] {...}`)。
 - `queue`: 连续提交 N 个任务, 验证单 worker 串行与状态流转。
+- `remux`: 双轨直拷换容器(`createRecorder(false)`)。
+- `extract`: 丢视频轨导出音频; `--codec copy` 为原样封装(不重编码)。
 
 ## Flutter 构建
 
@@ -66,11 +71,13 @@ Dart 侧入口: `lib/main.dart` → `lib/core/engine.dart` → `lib/native/ak_bi
 
 ## 当前状态
 
-- 已实现: ABI v1 全部函数; 事件线程; `transcode` handler; 单 worker 队列;
-  queued/running/done/failed/cancelled; 取消 draining; 临时文件与原子改名;
-  进度 5Hz 节流; 日志桥接。
-- 未实现: remux/extract/analyze/image; 多产物; 批处理 UI; URL 输入。
+- 已实现: ABI v1 全部函数; 事件线程; `transcode`/`remux`/`extract` handler;
+  单 worker 队列; queued/running/done/failed/cancelled; 取消 draining;
+  临时文件与原子改名; 进度 5Hz 节流; 日志桥接。
+- 未实现: `analyze`/`image`; 多产物; 批处理 UI; URL 输入。
 - 临时文件是 `stem.avoxkit-part.ext`(扩展名放最后), 不要改成 `.part` 结尾,
   否则引擎按扩展名选 muxer 会失败。
+- `extract` 出 `.m4a` 依赖 kit 编入 `ipod` muxer; 出 mp3 时 shim 会显式
+  `setAudioDesc(FLTP)`, 因为引擎默认按源的 `flt` 开 libmp3lame 会失败。
 - 运行时注意: `avox.dll` 依赖系统的 `d3dcompiler_47.dll`; 干净机器打包时确认
   系统提供, 不随包分发。

@@ -47,7 +47,10 @@ void usage() {
       "  transcode <in> <out> <work_dir> [--hardware off|auto|on]\n"
       "            [--codec h264|hevc] [--quality N] [--cancel-ms N]\n"
       "            [--overwrite]\n"
-      "  queue <in> <out_dir> <work_dir> <count> [--hardware off|auto|on]\n");
+      "  queue <in> <out_dir> <work_dir> <count> [--hardware off|auto|on]\n"
+      "  remux <in> <out> <work_dir> [--overwrite]\n"
+      "  extract <in> <out> <work_dir> [--codec aac|mp3|copy]\n"
+      "            [--bitrate N] [--overwrite]\n");
 }
 
 void print_json(const char* label, const char* json) {
@@ -128,6 +131,51 @@ nlohmann::json make_task(const std::string& input, const std::string& output,
         {"quality", quality}}},
       {"audio", {{"codec", "aac"}, {"bitrate_kbps", -1}}}};
   return task;
+}
+
+nlohmann::json make_shell(const std::string& kind, const std::string& input,
+                          const std::string& output, bool overwrite) {
+  nlohmann::json task;
+  task["schema"] = 1;
+  task["kind"] = kind;
+  task["sources"] = nlohmann::json::array(
+      {{{"kind", "file"}, {"uri", input}}});
+  task["outputs"] = nlohmann::json::array(
+      {{{"role", "primary"}, {"path", output}}});
+  task["params"] = {{"overwrite", overwrite}};
+  return task;
+}
+
+// 走同一套 init/等待/回收; remux 与 extract 的差异只在任务 JSON
+int run_one(nlohmann::json task, const std::string& output,
+            const std::string& work_dir) {
+  if (init_engine(work_dir) != 0) {
+    return 1;
+  }
+  ak_set_event_cb(on_event, nullptr);
+  reset_wait(1);
+
+  const std::string text = task.dump();
+  std::printf("task: %s\n", text.c_str());
+  const int64_t task_id = ak_task_submit(text.c_str());
+  std::printf("task_id=%lld\n", static_cast<long long>(task_id));
+  if (task_id < 0) {
+    ak_shutdown();
+    return 1;
+  }
+
+  {
+    std::unique_lock<std::mutex> lock(g_wait_mtx);
+    g_wait_cv.wait_for(lock, std::chrono::minutes(10),
+                       [] { return g_terminal; });
+  }
+
+  if (!g_cancelled && !g_failed) {
+    print_json("output probe", ak_probe(output.c_str()));
+  }
+
+  ak_shutdown();
+  return (g_terminal && !g_failed) ? 0 : 1;
 }
 
 int run_transcode(const std::string& input, const std::string& output,
@@ -312,6 +360,44 @@ int main(int argc, char** argv) {
       }
     }
     return run_queue(input, out_dir, work_dir, count, hardware);
+  }
+
+  if (command == "remux") {
+    if (argc < 5) {
+      usage();
+      return 1;
+    }
+    bool overwrite = false;
+    for (int i = 5; i < argc; ++i) {
+      if (std::string(argv[i]) == "--overwrite") {
+        overwrite = true;
+      }
+    }
+    return run_one(make_shell("remux", argv[2], argv[3], overwrite), argv[3],
+                   argv[4]);
+  }
+
+  if (command == "extract") {
+    if (argc < 5) {
+      usage();
+      return 1;
+    }
+    std::string codec = "aac";
+    int bitrate = -1;
+    bool overwrite = false;
+    for (int i = 5; i < argc; ++i) {
+      const std::string arg = argv[i];
+      if (arg == "--codec" && i + 1 < argc) {
+        codec = argv[++i];
+      } else if (arg == "--bitrate" && i + 1 < argc) {
+        bitrate = std::atoi(argv[++i]);
+      } else if (arg == "--overwrite") {
+        overwrite = true;
+      }
+    }
+    auto task = make_shell("extract", argv[2], argv[3], overwrite);
+    task["params"]["audio"] = {{"codec", codec}, {"bitrate_kbps", bitrate}};
+    return run_one(task, argv[3], argv[4]);
   }
 
   usage();

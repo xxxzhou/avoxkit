@@ -58,6 +58,9 @@ struct Task {
   int32_t quality = 60;
   int32_t bitrate_kbps = 0;
   int32_t audio_bitrate_kbps = -1;
+  int32_t audio_sample_rate = 0;
+  int32_t audio_channels = 0;
+  bool audio_copy = false;
   bool hardware = false;
   bool overwrite = false;
 
@@ -328,6 +331,24 @@ bool jbool(const json& j, const char* key, bool fallback) {
   return fallback;
 }
 
+// libmp3lame 只收 8/11.025/12/16/22.05/24/32/44.1/48 kHz
+int32_t mp3_sample_rate(int32_t rate) {
+  switch (rate) {
+    case 8000:
+    case 11025:
+    case 12000:
+    case 16000:
+    case 22050:
+    case 24000:
+    case 32000:
+    case 44100:
+    case 48000:
+      return rate;
+    default:
+      return rate > 44100 ? 48000 : 44100;
+  }
+}
+
 std::filesystem::path canonical_path(const std::filesystem::path& path) {
   std::error_code ec;
   auto canonical = std::filesystem::weakly_canonical(path, ec);
@@ -391,7 +412,7 @@ std::shared_ptr<Task> parse_task(const std::string& text, int32_t& code,
   }
 
   const std::string kind = jstr(root, "kind", "");
-  if (kind != "transcode") {
+  if (kind != "transcode" && kind != "remux" && kind != "extract") {
     code = kind.empty() ? AK_E_BAD_JSON : AK_E_UNSUPPORTED_KIND;
     error = "unsupported kind: " + kind;
     return nullptr;
@@ -465,11 +486,16 @@ std::shared_ptr<Task> parse_task(const std::string& text, int32_t& code,
   }
 
   ACodecId acodec = ACodecId::aac;
+  bool audio_copy = false;
   const std::string audio_codec = jstr(audio, "codec", "aac");
   if (audio_codec == "aac") {
     acodec = ACodecId::aac;
+  } else if (audio_codec == "mp3") {
+    acodec = ACodecId::mp3;
   } else if (audio_codec == "none") {
     acodec = ACodecId::none;
+  } else if (audio_codec == "copy" && kind == "extract") {
+    audio_copy = true;
   } else {
     code = AK_E_UNSUPPORTED_KIND;
     error = "unsupported audio codec: " + audio_codec;
@@ -504,6 +530,8 @@ std::shared_ptr<Task> parse_task(const std::string& text, int32_t& code,
   int32_t bitrate_kbps = std::max(0, jint(video, "bitrate_kbps", 0));
   int32_t audio_bitrate = jint(audio, "bitrate_kbps", -1);
   audio_bitrate = std::max(-1, std::min(1024, audio_bitrate));
+  int32_t audio_sample_rate = 0;
+  int32_t audio_channels = 0;
   const bool overwrite = jbool(params, "overwrite", false);
   const std::string container = jstr(params, "container", "mp4");
 
@@ -515,10 +543,38 @@ std::shared_ptr<Task> parse_task(const std::string& text, int32_t& code,
     error = "input file not found: " + input;
     return nullptr;
   }
+  if (kind == "extract") {
+    if (acodec == ACodecId::none) {
+      code = AK_E_BAD_JSON;
+      error = "extract requires an audio codec";
+      return nullptr;
+    }
+    // 提交前拦掉无音轨, 比开完再失败的报错清楚; 顺带取源音频规格
+    const json probe = json::parse(probe_uri_json(input), nullptr, false);
+    if (probe.is_object() && probe.value("ok", false)) {
+      if (!probe.contains("audio") || !probe["audio"].is_array() ||
+          probe["audio"].empty()) {
+        code = AK_E_BAD_SOURCE;
+        error = "input has no audio track";
+        return nullptr;
+      }
+      const json& track = probe["audio"][0];
+      if (track.contains("sample_rate") && track["sample_rate"].is_number()) {
+        audio_sample_rate = track["sample_rate"].get<int32_t>();
+      }
+      if (track.contains("channels") && track["channels"].is_number()) {
+        audio_channels = track["channels"].get<int32_t>();
+      }
+    }
+  }
   auto output_path = std::filesystem::u8path(output);
   if (output_path.extension().empty()) {
-    output_path += (container == "matroska" || container == "mkv") ? ".mkv"
-                                                                   : ".mp4";
+    if (kind == "extract") {
+      output_path += (acodec == ACodecId::mp3 && !audio_copy) ? ".mp3" : ".m4a";
+    } else {
+      output_path += (container == "matroska" || container == "mkv") ? ".mkv"
+                                                                     : ".mp4";
+    }
   }
   ec.clear();
   auto absolute_output = std::filesystem::absolute(output_path, ec);
@@ -565,6 +621,9 @@ std::shared_ptr<Task> parse_task(const std::string& text, int32_t& code,
   task->quality = quality;
   task->bitrate_kbps = bitrate_kbps;
   task->audio_bitrate_kbps = audio_bitrate;
+  task->audio_sample_rate = audio_sample_rate;
+  task->audio_channels = audio_channels;
+  task->audio_copy = audio_copy;
   task->hardware = hardware;
   task->overwrite = overwrite;
   task->observer = std::make_shared<RecorderObserver>(task);
@@ -798,7 +857,8 @@ class TaskRuntime {
     }
     std::filesystem::remove(std::filesystem::u8path(task->temp), ec);
 
-    IRecorder* recorder = createRecorder(true);
+    const bool bTranscode = task->kind != "remux";
+    IRecorder* recorder = createRecorder(bTranscode);
     if (!recorder) {
       emit_error(*task, "internal", "Cannot create recorder", "");
       return;
@@ -809,19 +869,45 @@ class TaskRuntime {
     }
 
     recorder->setMuxerType(MuxerType::ffmpeg);
-    recorder->setVideoCodec(task->vcodec);
-    recorder->setAudioCodec(task->acodec);
-    VideoEncodeParam video_param;
-    video_param.rateMode = task->rate_mode;
-    video_param.quality = task->quality;
-    video_param.bitrateKbps = task->bitrate_kbps;
-    video_param.usage = EncodeUsage::record;
-    recorder->setVideoEncodeParam(video_param);
-    AudioEncodeParam audio_param;
-    audio_param.bitrateKbps = task->audio_bitrate_kbps;
-    recorder->setAudioEncodeParam(audio_param);
-    if (IOption* option = recorder->getOption()) {
-      option->setBool("rec.hard.encode", task->hardware);
+    if (task->kind == "extract") {
+      // 丢视频轨; copy 走直拷(容器不收时引擎自动回退重编)
+      recorder->setVideoCodec(VCodecId::none);
+      if (task->audio_copy) {
+        recorder->setTransMode(TransMode::AudioCopy);
+      } else {
+        recorder->setAudioCodec(task->acodec);
+        // 引擎默认按源格式(flt)开 mp3 编码器会失败, 显式声明成它支持的计划
+        if (task->acodec == ACodecId::mp3) {
+          const int32_t channels =
+              task->audio_channels > 0 ? task->audio_channels : 2;
+          AudioDesc desc;
+          desc.channels = static_cast<uint16_t>(std::min(channels, 2));
+          desc.sampleRate =
+              mp3_sample_rate(task->audio_sample_rate > 0
+                                  ? task->audio_sample_rate
+                                  : 44100);
+          desc.format = AudioFormat::AVOX_AUDIO_FLTP;
+          recorder->setAudioDesc(desc);
+        }
+        AudioEncodeParam audio_param;
+        audio_param.bitrateKbps = task->audio_bitrate_kbps;
+        recorder->setAudioEncodeParam(audio_param);
+      }
+    } else if (task->kind == "transcode") {
+      recorder->setVideoCodec(task->vcodec);
+      recorder->setAudioCodec(task->acodec);
+      VideoEncodeParam video_param;
+      video_param.rateMode = task->rate_mode;
+      video_param.quality = task->quality;
+      video_param.bitrateKbps = task->bitrate_kbps;
+      video_param.usage = EncodeUsage::record;
+      recorder->setVideoEncodeParam(video_param);
+      AudioEncodeParam audio_param;
+      audio_param.bitrateKbps = task->audio_bitrate_kbps;
+      recorder->setAudioEncodeParam(audio_param);
+      if (IOption* option = recorder->getOption()) {
+        option->setBool("rec.hard.encode", task->hardware);
+      }
     }
     addRecorderOb(recorder, task->observer.get());
 

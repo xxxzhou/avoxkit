@@ -31,6 +31,8 @@ std::string ffmpeg_error(int ret) {
   return buf;
 }
 
+}  // namespace
+
 std::string probe_uri_json(const std::string& uri) {
   AVFormatContext* format = nullptr;
   int ret = avformat_open_input(&format, uri.c_str(), nullptr, nullptr);
@@ -113,7 +115,6 @@ std::string probe_uri_json(const std::string& uri) {
   return j.dump();
 }
 
-}  // namespace
 }  // namespace ak
 
 extern "C" const char* ak_probe(const char* uri) {

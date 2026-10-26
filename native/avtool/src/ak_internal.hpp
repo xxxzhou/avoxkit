@@ -53,6 +53,9 @@ void log_set_file(const std::string& path, const std::string& level);
 void log_close();
 void avox_log_bridge(int32_t level, const char* message);
 
+// probe (JSON: ok/format/duration_ms/video[]/audio[]/subtitles[])
+std::string probe_uri_json(const std::string& uri);
+
 // util
 std::string now_iso8601();
 int64_t now_ms();

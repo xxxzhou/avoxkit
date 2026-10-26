@@ -61,7 +61,11 @@ class TaskItem {
       case 'opening':
         return '打开文件';
       case 'recording':
-        return '转码中';
+        return switch (kind) {
+          'extract' => '提取中',
+          'remux' => '封装中',
+          _ => '转码中',
+        };
       case 'closing':
         return '收尾';
       default:

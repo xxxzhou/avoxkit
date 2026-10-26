@@ -5,10 +5,11 @@ import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 
 import '../../core/engine.dart';
-import '../../core/task.dart';
 import '../../core/task_store.dart';
 import '../tokens.dart';
+import '../widgets/media_source.dart';
 import '../widgets/panel.dart';
+import '../widgets/task_summary.dart';
 
 const _videoTypes = XTypeGroup(
   label: '视频',
@@ -203,7 +204,7 @@ class _ConvertPageState extends State<ConvertPage> {
           ),
           const SizedBox(height: 16),
           if (_inputPath == null)
-            _DropLikeButton(onTap: _pickInput)
+            AkSourcePicker(onTap: _pickInput)
           else
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -236,7 +237,7 @@ class _ConvertPageState extends State<ConvertPage> {
                     style: AkText.body.copyWith(color: AkColors.danger),
                   )
                 else if (_media != null)
-                  _MediaInfo(media: _media!),
+                  AkMediaInfo(media: _media!),
               ],
             ),
           const SizedBox(height: 20),
@@ -248,7 +249,7 @@ class _ConvertPageState extends State<ConvertPage> {
             style: AkText.micro,
           ),
           const SizedBox(height: 20),
-          _LatestTask(
+          AkLatestTask(
             taskStore: widget.taskStore,
             taskId: _lastTaskId,
           ),
@@ -358,221 +359,6 @@ class _ConvertPageState extends State<ConvertPage> {
             onPressed: _submitting ? null : _submit,
             child: Text(_submitting ? '提交中…' : '开始转换'),
           ),
-        ],
-      ),
-    );
-  }
-}
-
-class _DropLikeButton extends StatelessWidget {
-  const _DropLikeButton({required this.onTap});
-
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 20),
-        decoration: BoxDecoration(
-          color: AkColors.bgDeep,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: AkColors.border),
-        ),
-        child: Column(
-          children: [
-            const Icon(Icons.add, color: AkColors.accent, size: 24),
-            const SizedBox(height: 10),
-            Text('选择视频文件', style: AkText.body),
-            const SizedBox(height: 4),
-            Text('文件不会离开本机', style: AkText.micro),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _MediaInfo extends StatelessWidget {
-  const _MediaInfo({required this.media});
-
-  final Map<String, dynamic> media;
-
-  @override
-  Widget build(BuildContext context) {
-    final video = _first(media['video']);
-    final audio = _first(media['audio']);
-    final duration = (media['duration_ms'] as num?)?.toInt() ?? 0;
-    return Column(
-      children: [
-        LabeledRow(label: '时长', value: _duration(duration)),
-        LabeledRow(
-          label: '视频',
-          value: video == null
-              ? '无'
-              : '${_upper(video['codec'])} · ${video['width']}×${video['height']}'
-                  '${_fps(video['fps'])}',
-        ),
-        LabeledRow(
-          label: '音频',
-          value: audio == null
-              ? '无'
-              : '${_upper(audio['codec'])} · ${audio['channels']} 声道 · '
-                  '${audio['sample_rate']} Hz',
-        ),
-        LabeledRow(
-          label: '容器',
-          value: '${media['format'] ?? '未知'}',
-        ),
-      ],
-    );
-  }
-
-  static Map<String, dynamic>? _first(dynamic value) {
-    if (value is List && value.isNotEmpty && value.first is Map) {
-      return (value.first as Map).cast<String, dynamic>();
-    }
-    return null;
-  }
-
-  static String _upper(dynamic value) =>
-      value == null ? '未知' : value.toString().toUpperCase();
-
-  static String _fps(dynamic value) {
-    if (value is num && value > 0) {
-      return ' · ${value.toStringAsFixed(value % 1 == 0 ? 0 : 2)} fps';
-    }
-    return '';
-  }
-
-  static String _duration(int ms) {
-    final total = (ms / 1000).round();
-    final minutes = total ~/ 60;
-    final seconds = total % 60;
-    return '$minutes:${seconds.toString().padLeft(2, '0')}';
-  }
-}
-
-class _LatestTask extends StatelessWidget {
-  const _LatestTask({required this.taskStore, this.taskId});
-
-  final TaskStore taskStore;
-  final int? taskId;
-
-  @override
-  Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: taskStore,
-      builder: (context, _) {
-        final task = taskStore.taskById(taskId) ?? taskStore.latest;
-        if (task == null) {
-          return const SizedBox.shrink();
-        }
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('最近任务', style: AkText.label),
-            const SizedBox(height: 10),
-            _TaskSummary(task: task, taskStore: taskStore),
-          ],
-        );
-      },
-    );
-  }
-}
-
-class _TaskSummary extends StatelessWidget {
-  const _TaskSummary({required this.task, required this.taskStore});
-
-  final TaskItem task;
-  final TaskStore taskStore;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = switch (task.state) {
-      'done' => AkColors.state,
-      'failed' => AkColors.danger,
-      'cancelled' => AkColors.faint,
-      'running' => AkColors.accent,
-      _ => AkColors.muted,
-    };
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AkColors.surfaceAlt,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              StateDot(color: color),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  '${task.stateLabel} · ${task.title}',
-                  style: AkText.body.copyWith(color: AkColors.textStrong),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              if (task.isActive)
-                TextButton(
-                  onPressed: task.cancelRequested
-                      ? null
-                      : () => taskStore.cancel(task.id),
-                  child: Text(task.cancelRequested ? '取消中…' : '取消'),
-                ),
-            ],
-          ),
-          if (task.isActive) ...[
-            const SizedBox(height: 10),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(3),
-              child: LinearProgressIndicator(
-                value: task.progress == 0 ? null : task.progress,
-                minHeight: 4,
-                backgroundColor: AkColors.surfaceHi,
-                color: AkColors.accent,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Text(
-                  task.stage != null ? task.stageLabel : '等待中',
-                  style: AkText.micro,
-                ),
-                const Spacer(),
-                Text(
-                  '${(task.progress * 100).round()}%',
-                  style: AkText.mono.copyWith(fontSize: 11),
-                ),
-              ],
-            ),
-          ],
-          if (task.state == 'failed') ...[
-            const SizedBox(height: 8),
-            Text(
-              task.errorMessage ?? '任务失败',
-              style: AkText.body.copyWith(color: AkColors.danger),
-            ),
-            if (task.errorCode != null)
-              Text(task.errorCode!, style: AkText.micro),
-          ],
-          if (task.state == 'done' && task.output != null) ...[
-            const SizedBox(height: 8),
-            Text(
-              task.output!,
-              style: AkText.micro,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ],
         ],
       ),
     );

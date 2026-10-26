@@ -320,8 +320,8 @@ delete rec;
 2. M1 是否带拖拽: **带**(desktop_drop 已在缓存), 但文件选择器是必选路径。
 3. 取消后的 `.part`: **删除**(默认)。
 4. 失败自动重试: **不自动**(默认), 只提供手动重试。
-5. 硬编默认: **auto**(尝试 `h264_mf`, 失败回软编); `ak_encoder_probe` 为 0 时
-   UI 直接关掉硬编开关。
+5. 硬编默认: **off**(软编), `auto`/`on` 由调用方显式 opt-in; 硬编失败引擎
+   自动回退软编。`ak_encoder_probe` 为 0 时 UI 直接关掉硬编开关。
 
 ## 9. 本次落地进展(2026-10-26)
 
@@ -374,5 +374,26 @@ delete rec;
     各设一次), 已实测生效。
 - **剩余**: 任务失败重试按钮/诊断包导出/干净机器冒烟/安装包; 这些不影响 M1
   主链验收。
+
+## 10. M2.0 提前落地: remux + extract(2026-10-26)
+
+- **ABI 未变**: 两个 kind 都是新 handler; `TaskRuntime` 队列/事件/取消原样复用。
+- `remux`: `createRecorder(false)` 双轨直拷, 只按输出扩展名换容器。
+- `extract`: `createRecorder(true)` + `setVideoCodec(none)`; 音频 `aac`/`mp3`
+  重编, `copy` 走 `TransMode::AudioCopy` 原样封装。
+- 提交前用 `probe_uri_json` 拦掉无音轨, 返回 `AK_E_BAD_SOURCE`, UI 按钮同步禁用。
+- **kit 缺口**: `.m4a` 需要 `ipod` muxer; 白名单已加并重建,
+  `--verify` 仍无 nonfree。
+- **引擎缺口**: mp3 编码时引擎按源格式 `flt` 开 libmp3lame, 报
+  "Specified sample format flt is not supported"; shim 侧
+  `setAudioDesc(FLTP, 源采样率, ≤2 声道)` 解决。引擎侧应自行协商支持格式(待 avox)。
+- **实测**(ak_smoke, `sherpa.mp4` / `subtext_bg.mp4`):
+  - extract → m4a: 10s AAC、仅音轨;
+  - extract → mp3 192k: 58.7s、192 kbps、44.1 kHz;
+  - extract copy → m4a: 源 128 kbps 未重编;
+  - remux mp4→mkv→mp4: h264+aac 原样, 时长一致;
+  - 无音轨素材提交返回 -8, 不产生任务。
+- **UI**: 侧栏新增 提取音频 / 封装转换; 媒体信息与任务回执抽成
+  `widgets/media_source.dart`、`widgets/task_summary.dart` 复用。
 
 

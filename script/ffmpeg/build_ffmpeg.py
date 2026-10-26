@@ -111,8 +111,9 @@ KIT_DEMUXERS = ("mov,matroska,flv,live_flv,mpegts,hls,avi,asf,aac,mp3,ogg,wav,rt
                 "jacosub,vplayer,stl,vobsub,sup,"
                 "aiff,caf,w64,au,tta,wv,shorten,tak,mpc,mpc8,dts,eac3,xwma,"
                 "ivf,swf,image2,image2pipe,rawvideo,concat,")
-# mp3=音轨出 mp3; wav=无损音频导出兜底 (引擎 WavSave 之外的白名单级兜底)
-KIT_MUXERS = "mp4,mov,flv,mpegts,matroska,adts,mp3,wav"
+# mp3=音轨出 mp3; wav=无损音频导出兜底 (引擎 WavSave 之外的白名单级兜底);
+# ipod=只含音轨的 m4a (avformat 按扩展名选 muxer, 缺它 .m4a 直接猜不出)
+KIT_MUXERS = "mp4,mov,flv,mpegts,matroska,adts,mp3,wav,ipod"
 
 FLAVORS = ("kit", "gpl")
 PACMAN_PKGS = ("mingw-w64-x86_64-libx264", "mingw-w64-x86_64-x265",
