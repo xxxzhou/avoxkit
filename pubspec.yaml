@@ -1,5 +1,5 @@
 name: avoxkit
-description: "A new Flutter project."
+description: "Free, local, private audio & video toolbox."
 publish_to: 'none'
 version: 0.1.0+1
 
@@ -9,6 +9,10 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  ffi: ^2.2.0
+  file_selector: ^1.1.0
+  path: ^1.9.1
+  path_provider: ^2.1.6
 
 dev_dependencies:
   flutter_test:
@@ -17,3 +21,10 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  fonts:
+    - family: Albert Sans
+      fonts:
+        - asset: assets/fonts/albertsans.ttf
+    - family: JetBrains Mono
+      fonts:
+        - asset: assets/fonts/jetbrainsmono.ttf

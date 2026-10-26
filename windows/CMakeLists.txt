@@ -106,3 +106,16 @@ install(DIRECTORY "${PROJECT_BUILD_DIR}/${FLUTTER_ASSET_DIR_NAME}"
 install(FILES "${AOT_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}"
   CONFIGURATIONS Profile;Release
   COMPONENT Runtime)
+
+# avoxkit native runtime: avoxkit_native.dll + avox.dll + kit ffmpeg DLLs.
+# Build native/avtool first; see native/avtool/README.md.
+set(AVOXKIT_NATIVE_BIN "${CMAKE_CURRENT_SOURCE_DIR}/../native/avtool/build/bin/Release")
+if(EXISTS "${AVOXKIT_NATIVE_BIN}/avoxkit_native.dll")
+  file(GLOB AVOXKIT_RUNTIME_DLLS "${AVOXKIT_NATIVE_BIN}/*.dll")
+  install(FILES ${AVOXKIT_RUNTIME_DLLS}
+    DESTINATION "${INSTALL_BUNDLE_LIB_DIR}" COMPONENT Runtime)
+else()
+  message(WARNING
+    "avoxkit_native.dll not found at ${AVOXKIT_NATIVE_BIN}; "
+    "build native/avtool before flutter build windows")
+endif()

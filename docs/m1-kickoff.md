@@ -1,0 +1,378 @@
+# M1 开工方案(落地执行, 2026-10-26)
+
+> 承接 `docs/m1-plan.md`。那份是设计口径; 本文只写"怎么开工": 本次实测校正、
+> 构建门、代码骨架、线程/取消语义、验收顺序。两边冲突时以本文的实测事实为准,
+> 并把结论回写 `m1-plan.md`。
+>
+> 结论先说: **avox 在 M1 计划的那组 CMake 开关下编译不过**(两个可选组件门没关严),
+> 需要先在 avox 仓补两个 `#ifdef` 或改用完整模块构建; shim 不需要自己调
+> `AvoxManager::init()`, `avox.dll` 的 `DllMain` 已自动初始化。
+>
+> ABI 函数面、事件所有权、取消语义、能力探测以 `docs/functional-architecture.md`
+> §4/§5 为准; 本文的 ABI 段是早期落地稿, 下一轮同步。
+
+## 0. 本次实测基线
+
+| 项 | 结果 |
+|---|---|
+| 工具链 | cmake 4.0.0-rc4; VS 2022 Community (MSBuild 17.14); Flutter 3.47.4 (`D:/Work/flutter`) |
+| avox 配置 | 用 m1-plan §6 的开关 + `AVOX_ENABLE_AGENT=OFF`, configure 5 秒通过, 安装目录 `avox/build-avoxkit/install/AMD64` |
+| avox 编译 | **失败**, 两个错误(见 §1.1), 与 avoxkit 代码无关 |
+| ffmpeg 版本 | kit 与 avox 3rdparty 同为 9.0.1: avcodec 63 / avformat 63 / avutil 61 / swresample 7 |
+| kit 导入库 | MSVC 可直接链接 (已用 `cl` + `avcodec.lib/avformat.lib/avutil.lib` 实测, 运行输出 `libmp3lame: yes`) |
+| kit 编码器白名单 | `h264_mf,hevc_mf,aac,libx264,libx265,libmp3lame`; **没有** qsv/amf/nvenc |
+| avox 初始化 | Windows 下 `DllMain(DLL_PROCESS_ATTACH)` 自动 `AvoxManager::Get().init()`; DETACH 自动 `clean()` |
+| 公开头 | 安装到 `install/include/avox/*.h`; `AvoxManager.hpp` **不在**公开头里(也不需要) |
+| 音频码率 | avox 工作区已有未提交的 `setAudioEncodeParam(AudioEncodeParam)`: `bitrateKbps/vbrQuality/profile` |
+| close 语义 | `close()` 立即把状态置 `completed`(failed 除外), 排空后才回调 `onComplete`; 失败不回调 `onComplete` |
+| 硬编开关 | `IRecorder` 没有 `setHardEncode`; 走 `getOption()->setBool("rec.hard.encode", ...)` |
+| 递归所有权 | `createRecorder()` 内部 `new`, 调用方 `removeRecorderOb` 后 `delete` |
+| 探测 | `getSourceInfo()/getDuration()` 要 `open()` 后才有效; 预探测在本仓用 libavformat 实现 |
+| 测试工具 | 系统 `ffmpeg/ffprobe` 可用; 测试素材可用 `avox/assets/video/*` 或现生成 |
+
+## 1. 开工前置 P0(约半天)
+
+### 1.1 avox 编译门(必须先解决)
+
+关掉 ZLM/freetype 后, 核心 target 仍编译了依赖它们的代码:
+
+1. `src/avox/player/RtcPlayerApi.cpp:3` 无条件 `#include "avox_zlmediakit/TestSdpOb.hpp"`
+   → `mk_httpclient.h` 找不到。
+2. `src/avox_cmd/commands/CmdPlay.cpp:951-953` 的 `case 'I'` 用了 `kOsdColors/
+   kOsdColorCount`, 但声明在 `#ifdef AVOX_ENABLE_FREETYPE` 里 → 关 freetype 即报未声明。
+   (`avox_cmd` 源码无论 `AVOX_ENABLE_CLI` 开关都会编进 `avox` target。)
+
+**推荐: 在 avox 仓补两个门(改动小, 核心构建继续瘦身)**
+
+```cpp
+// RtcPlayerApi.cpp
+#ifdef AVOX_ENABLE_ZLMEDIAKIT
+#include "avox_zlmediakit/TestSdpOb.hpp"
+#endif
+
+IRtcEventOb* createZlTestSdpAgent(IRtcPlayer* player, const char* serverUrl) {
+#ifdef AVOX_ENABLE_ZLMEDIAKIT
+  if (!player || !serverUrl) return nullptr;
+  auto ob = new TestSdpOb(serverUrl);
+  ob->setPlayer(player);
+  return ob;
+#else
+  (void)player; (void)serverUrl;
+  return nullptr;
+#endif
+}
+```
+
+```cpp
+// CmdPlay.cpp, case 'I' 整段
+#ifdef AVOX_ENABLE_FREETYPE
+            case 'I': {  // 几何颜色循环
+              geoColorIdx = (geoColorIdx + 1) % kOsdColorCount;
+              drawGeoDecor();
+              printf("  几何颜色: %s\n", kOsdColors[geoColorIdx].name);
+              break;
+            }
+#endif
+```
+
+**备选**: 不改 avox, 打开 `AVOX_ENABLE_ZLMEDIAKIT` + 构建 freetype 模块。代价是
+多带 mk_api/OpenSSL 依赖, 构建更慢; M1 用不到, 不推荐。
+
+改动提交在 avox 仓(引擎仓), 本仓不 vendor 补丁。
+
+### 1.2 更新后的构建命令
+
+```bash
+cd D:/Work/github/avox
+cmake -S . -B build-avoxkit -G "Visual Studio 17 2022" -A x64 \
+  -DAVOX_DIST_FLAVOR=agpl \
+  -DAVOX_ENABLE_FDKAAC=OFF -DAVOX_ENABLE_FAAC=OFF \
+  -DAVOX_ENABLE_WEBRTC=OFF -DAVOX_ENABLE_ZLMEDIAKIT=OFF \
+  -DAVOX_ENABLE_SWIG=OFF -DAVOX_ENABLE_GODOT=OFF -DAVOX_ENABLE_UNITY=OFF \
+  -DAVOX_ENABLE_CLI=OFF -DAVOX_ENABLE_SAMPLES=OFF \
+  -DAVOX_ENABLE_PLUGINS=OFF -DAVOX_ENABLE_AGENT=OFF \
+  -DAVOX_ENABLE_FREETYPE=OFF
+cmake --build build-avoxkit --config Release --target avox --parallel 8
+```
+
+- `FAAC=OFF`: 本机 `find_package(Faac)` 会命中并静态链入; M1 不需要, 也避开
+  FFmpeg 体系里 FAAC 的 nonfree 争议。AAC 编码走 kit 的原生 `aac`。
+- 产物: `build-avoxkit/install/AMD64/avox.dll` + `avox.lib`;
+  公开头 `build-avoxkit/install/include/avox/`。
+- avox 工作区当前有音频编码参数改动(未提交)。shim 用同一次构建装出的头,
+  不会错位; 但要记录 `git rev-parse HEAD` + 说明工作区脏, 避免下次换机器复现不了。
+
+### 1.3 门 G0
+
+- [ ] `avox.dll/avox.lib` 生成, `dumpbin /exports avox.dll` 能看到
+      `createRecorder/addRecorderOb/removeRecorderOb/setLogAction/...`
+- [ ] 用 `dumpbin /imports avox.dll` 的 av* 导入符号对 `dumpbin /exports` 的
+      kit DLL 做差集, 必须为空(kit 白名单为 avox 超集)。
+- [ ] 新建空目录跑一次 `LoadLibrary` + `ak_version`, 不依赖 avox 3rdparty 的 ffmpeg。
+
+## 2. 本仓 native 骨架(M1.0, 约半天)
+
+沿用 m1-plan §2 的目录, 补两个文件: `tools/ak_smoke.cpp` 与 `src/ak_probe.cpp`。
+
+```
+native/avtool/
+  CMakeLists.txt
+  include/ak.h
+  src/ak_api.cpp        C 边界/字符串所有权/参数校验
+  src/ak_engine.cpp     init/shutdown/自检/日志/工作目录
+  src/ak_event.cpp      事件线程 + MPSC 队列 + JSON 序列化
+  src/ak_task.cpp       Task/队列/worker/状态机/取消
+  src/ak_json.cpp       任务 JSON 解析与默认值
+  src/ak_probe.cpp      libavformat 探测(不启动引擎)
+  src/ak_log.cpp        文件日志 + avox setLogAction 桥接
+  third_party/nlohmann/json.hpp
+  tools/ak_smoke.cpp    无 Flutter 的命令行验收程序
+```
+
+CMake 关键点:
+
+```cmake
+set(CMAKE_CXX_STANDARD 17)
+# avox 用 /MT 静态 CRT, shim 必须一致
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+set(AVOX_BUILD_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../avox/build-avoxkit" CACHE PATH "")
+set(KIT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/ffmpeg/kit" CACHE PATH "")
+target_include_directories(avoxkit_native PRIVATE
+  include "${AVOX_BUILD_DIR}/install/include" "${KIT_DIR}/include")
+target_link_libraries(avoxkit_native PRIVATE
+  "${AVOX_BUILD_DIR}/install/AMD64/avox.lib"
+  "${KIT_DIR}/bin/avformat.lib" "${KIT_DIR}/bin/avcodec.lib"
+  "${KIT_DIR}/bin/avutil.lib" "${KIT_DIR}/bin/swresample.lib")
+```
+
+初始化/关闭的正确做法(与 m1-plan §4 不同):
+
+- `ak_init`: 建目录/日志 → `setLogAction(...)` → 自检 → 标记 ready。
+  **不调用** `AvoxManager::init()`(DllMain 已调), 也不 include 内部头。
+- `ak_shutdown`: 停队列/取消 running/join worker/摘 observer/删 recorder →
+  释放自己的资源。**不调用** `AvoxManager::clean()`: 它会重复跑 cleanFuncs,
+  且 DETACH 还会再跑一次。
+- 自检项:
+  - `avcodec_configuration()` 含 `--enable-libmp3lame`;
+  - `avcodec_find_encoder_by_name("libmp3lame")` 非空;
+  - `avcodec_find_encoder_by_name("aac")` 非空;
+  - `avformat_version() >> 16 == 63`;
+  - 失败返回 `AK_E_FFMPEG_MISMATCH`, 把实际配置串与 DLL 路径打进日志和 UI。
+
+`ak_version` 返回 JSON: shim 版本、`AVOX_COMMIT_HASH/AVOX_COMMIT_VERSION`
+(来自 `AvoxVersion.h`)、avox 运行目录、ffmpeg 版本与配置串摘要。
+
+### 2.1 ABI 增量(相对 m1-plan)
+
+- `ak_init(const char* work_dir)` 用普通 UTF-8 路径, 不用 JSON(与 m1-plan 一致,
+  纠正 architecture.md 的 `work_dir_json` 写法)。
+- `ak_probe(const char* uri)` 用 libavformat 直接打开, 返回:
+  ```json
+  {"ok":true,"duration_ms":60000,"format":"matroska",
+   "video":[{"codec":"h264","width":1920,"height":1080,"fps":29.97}],
+   "audio":[{"codec":"aac","channels":2,"sample_rate":48000,"bitrate_kbps":128}],
+   "can_seek":true}
+  ```
+  失败返回 `{"ok":false,"code":...,"message":...}`。URL 探测在 M2 复用同一入口。
+- 任务 JSON 增加 `audio.bitrate_kbps`(默认 `-1` = 按声道自动, avox 新参数面);
+  其余字段同 m1-plan。M1 仍只接受 `source.kind=file`。
+
+### 2.2 门 G1
+
+- [ ] `ak_smoke version` 打印 avox/ffmpeg 版本与配置串;
+- [ ] `ak_smoke init <tmpdir>` 成功, 重复 init 返回 `already_init`;
+- [ ] 故意换成 avox 3rdparty 的 ffmpeg DLL, 启动报 `ffmpeg_mismatch` 且不进主界面。
+
+## 3. 单任务全链(M1.2, 约一天)
+
+调用顺序(已对照 avox 源码):
+
+```cpp
+IRecorder* rec = createRecorder(true);
+rec->setVideoCodec(VCodecId::h264);
+rec->setAudioCodec(ACodecId::aac);
+VideoEncodeParam vp; vp.rateMode = EncodeRateMode::quality;
+vp.quality = 60; vp.usage = EncodeUsage::record;
+rec->setVideoEncodeParam(vp);
+AudioEncodeParam ap; ap.bitrateKbps = -1;   // 按声道自动
+rec->setAudioEncodeParam(ap);
+rec->getOption()->setBool("rec.hard.encode", hardwareOn);
+addRecorderOb(rec, observer);
+rec->open(inputUtf8, tempOutputUtf8);       // true = 已进入 opening
+// 运行中取消:
+rec->close();                                // 排空语义, 不杀线程
+// 收尾:
+removeRecorderOb(rec, observer);
+delete rec;
+```
+
+线程与所有权规则:
+
+- `IRecorderOb` 的回调在 avox 的源/编码线程上触发; 回调里只做"写 Task 字段 +
+  投递事件", 不碰队列锁外的共享对象, 不调 `ak_*` 以外的引擎 API。
+- 每个 running Task 独占一个 recorder; observer 是 Task 的成员, 必须等
+  `onComplete/onIoError` 且 worker 退出后再删 Task。
+- 引擎对象不跨线程共享; 事件序列化统一在事件线程做。
+
+状态机 `queued → running(opening→recording→closing) → done|failed|cancelled`:
+
+- `queued`: submit 校验通过后发。
+- `running/opening`: `open()` 返回 true 后发; `onStateChange(recording)` 发 stage。
+- `done`: `onComplete` 且未请求取消 → rename `.part` → `output` → 发 done。
+- `failed`: `onIoError/onEncodeError`, 或 `open()` 返回 false → 删 `.part` → 发 error。
+- `cancelled`: 见下。
+
+取消语义(M1 的硬指标是 1 秒内回到 cancelled):
+
+1. `ak_task_cancel` 置 `cancelRequested`, 对 running 调 `rec->close()`;
+2. **立即**把任务置 `cancelled` 并发事件(不再等排空);
+3. 引擎随后仍会回调 `onStateChange(completed)` 和 `onComplete`——一律吞掉,
+   不得再发 `done`;
+4. 排空结束后删 `.part`, 释放 recorder; 队列 worker 在此之前不接下一个任务
+   (并发仍为 1, 但 UI 已经看到 cancelled)。
+5. 若 5 秒仍未回调, 记录一条 warning 并强制收尾(不杀线程, 只释放我们自己的引用)。
+
+失败/取消都写临时文件 `输出同目录/<stem>.avoxkit-part<ext>`(扩展名放最后,
+否则引擎按扩展名选 muxer 会失败), 完成后
+`MoveFileExW(MOVEFILE_REPLACE_EXISTING)`; 失败/取消删除。
+
+进度: 引擎 `RecorderProgress{currentTimeMs,totalTimeMs}`; 200ms 节流;
+`totalTimeMs<=0` 时只发 `current_ms`, 不发 `pct`; 终态必发一次 100%。
+
+### 3.1 错误码映射
+
+| 引擎事件 | ak code |
+|---|---|
+| `open()` false / `onIoError` in opening | `input_open_failed` |
+| 解码车道死/解码错误 | `decode_failed` |
+| `onEncodeError` | `encode_failed` |
+| muxer/open 输出失败 | `output_not_writable` |
+| 取消 | `cancelled` |
+| shutdown | `shutdown` |
+| 自检失败 | `ffmpeg_mismatch` |
+
+### 3.2 门 G2
+
+- [ ] 10 秒 720p → H.264 MP4, `ffprobe` 时长/分辨率/音频轨正确;
+- [ ] 进度事件单调, 200ms 级别, 完成后收到 `done`;
+- [ ] 30% 时取消, ≤1 秒收到 `cancelled`, `.part` 与最终输出都不存在;
+- [ ] 中文/空格/长路径通过; 只读输出目录报 `output_not_writable`;
+- [ ] 连续 20 次提交/取消, 句柄与内存不增长。
+
+## 4. 队列 v0(M1.3, 约半天)
+
+- `mutex + condition_variable + 1 worker`; `maxConcurrency=1` 留字段。
+- `ak_task_submit` 只做校验/入队/发 queued; 不在调用线程打开文件。
+- `ak_task_remove` 只允许 queued; running 只能 cancel。
+- 关闭顺序: 停止接收 → 取消 running → join worker → 删任务 → 停事件线程。
+- 单测: JSON 解析/默认值/错误码; 状态机(queued cancel、running cancel、
+  失败、正常完成); 重复取消幂等。
+
+门 G3: 单测全绿 + 并发提交 10 个任务, 串行完成, 状态无回退。
+
+## 5. Dart/Flutter(M1.4, 约一天半)
+
+- `pubspec.yaml` 加 `ffi: ^2.2.0`、`file_selector: ^1.1.0`(本机 pub 缓存已有,
+  离线可解析); 拖拽区可再加 `desktop_drop 0.5.0`。
+- `lib/native/ak_bindings.dart`: `DynamicLibrary.open('avoxkit_native.dll')`,
+  函数签名 + UTF-8 转换; 返回字符串用完 `ak_free_string`。
+- `lib/native/ak_events.dart`: `NativeCallable.listener` → 广播 Stream; 事件模型。
+- `lib/core/engine.dart`: 启动 `ak_init`; 失败页显示错误码/配置串/修复建议。
+- `lib/core/task.dart` + `task_store.dart`: ChangeNotifier; 只保留最近进度值。
+- `lib/ui/`: 先落 `AkTokens` + `AppShell` + `ToolPage` + 转换页 + 任务页;
+  参数控件用最小 `OptionForm`(质量/目标大小/分辨率/编码/容器)。
+  其余工具页 M2 再进, 遵守 docs/ui.md 的 registry 扩展方式。
+- DLL 部署: `windows/CMakeLists.txt` 加 post-build copy, 把
+  `avoxkit_native.dll / avox.dll / kit 的 avcodec-63 等 + libmp3lame/x264/x265/
+  zlib1/libwinpthread` 拷到 `$<TARGET_FILE_DIR:${BINARY_NAME}>`;
+  **不要**拷 avox 3rdparty 的 ffmpeg。
+
+门 G4: `flutter run --release` 启动, 选文件→提交→进度→完成; 队列页状态正确;
+关闭窗口无崩溃/无残留进程。
+
+## 6. 错误态与打包(M1.5/M1.6, 约一天)
+
+- 自检失败页: 错误码 + 实际 `avcodec_configuration()` + 期望 DLL 名/路径。
+- 日志: `<work_dir>/logs/avoxkit-YYYYMMDD.log`, 同时桥接 avox 日志;
+  失败任务在 UI 提供"打开日志目录"。
+- 打包脚本: `script/deploy_windows.ps1`(或 CMake install) 固定 DLL 清单;
+  干净目录(无 MSYS2/VS)冒烟启动 + 转码。
+- 门 G5: 干净机器/新用户目录启动; 首启不依赖开发机 PATH。
+
+## 7. 与 m1-plan 的差异(需回写)
+
+1. `close()` 会把状态置 completed; 取消必须在 shim 层单独记账并吞掉完成事件。
+2. 硬编开关是 option `rec.hard.encode`, 不是 `IRecorder::setHardEncode`。
+3. shim 不调用 `AvoxManager::init/clean`; Windows 由 DllMain 托管。
+   Linux/macOS 没有 DllMain, 需要 avox 补一个公开的 init/shutdown C 入口
+   (记入 architecture.md §5 引擎缺口, M5 前处理)。
+4. 音频码率旋钮已经存在(`setAudioEncodeParam`), M1 直接暴露
+   `audio.bitrate_kbps`, 目标大小估算可扣音频预算。
+5. `ak_probe` 用 libavformat 在本仓实现, 不启动引擎; `IRecorder::getSourceInfo`
+   只能在 open 之后用。
+6. kit 的硬编白名单只有 `h264_mf/hevc_mf`; `ak_encoder_probe` 在 M1 只报
+   "MF 或软编可用", 真编 3 帧验证放 M1.5。qsv/amf/nvenc 要等扩 kit 白名单。
+
+## 8. 还缺的决定(默认值已选, 可改)
+
+1. avox 工作区的音频参数改动: **先在 avox 仓提交**, 再按提交号构建
+   (默认; 否则每次构建都依赖脏工作区)。
+2. M1 是否带拖拽: **带**(desktop_drop 已在缓存), 但文件选择器是必选路径。
+3. 取消后的 `.part`: **删除**(默认)。
+4. 失败自动重试: **不自动**(默认), 只提供手动重试。
+5. 硬编默认: **auto**(尝试 `h264_mf`, 失败回软编); `ak_encoder_probe` 为 0 时
+   UI 直接关掉硬编开关。
+
+## 9. 本次落地进展(2026-10-26)
+
+- **avox 编译门已补**(avox 仓, 未提交): `src/avox/player/RtcPlayerApi.cpp` 加
+  `AVOX_ENABLE_ZLMEDIAKIT` guard; `src/avox_cmd/commands/CmdPlay.cpp` 的 `case 'I'`
+  加 `AVOX_ENABLE_FREETYPE` guard。音频编码参数已在 avox `4954d5e` 提交。
+- **avox 构建通过**: `build-avoxkit/install/AMD64/Release/avox.dll + avox.lib`;
+  `dumpbin` 确认 `createRecorder/addRecorderOb/removeRecorderOb/setLogAction/
+  getAvoxRunDir` 导出; 运行时依赖 kit 的 avcodec/avformat/avutil/swresample。
+- **shim 骨架已落**: `native/avtool/`(CMake + `include/ak.h` + engine/event/log/
+  probe/task/api + `tools/ak_smoke.cpp`), 按 `/MT` 链接 `avox.lib` 与 kit 导入库,
+  构建后自动拷运行时 DLL。
+- **ak_smoke 验收通过**:
+  - `version`: ABI 1.0, avox 1.0.0970/4954d5e, ffmpeg 9.0.1, `libmp3lame=true`;
+  - `init`: 自检通过, 日志落到 `<work_dir>/logs/avoxkit-YYYYMMDD.log`;
+  - `caps`: h264/hevc 软硬编、aac/mp3、mp4/matroska、协议列表与 features;
+  - `probe`: 对 `avox/assets/video/avox_electron.mp4` 返回 hevc 1392x880@30、
+    83.4s、can_seek=true。
+- **实现期踩坑**:
+  1. `init` 里持 `engine().mtx` 再调 `make_version_json()` 会二次锁同一把
+     `std::mutex`, MSVC 抛 `system_error` 直接终止; 已改为锁外构建。
+  2. avox 日志走异步队列; 关文件前必须 `avox::flushLog()`, 否则桥接日志在
+     `restoreLogObserver()` 后落到 stdout 而不是文件。
+  3. FFmpeg 9 的 `AVCodecParameters` 没有 `channels`, 用 `ch_layout.nb_channels`。
+- **M1.2/M1.3 已完成**:
+  - transcode handler 接上 `TranscodeRecorder`; 单 worker 队列、queued/running/
+    done/failed/cancelled、取消 draining、临时文件原子改名、进度 5Hz 节流。
+  - 10 秒 720p 素材(H.264/AAC)软编转码通过: 输出 H.264 1280x720、9.96s、AAC 48k;
+    `--hardware auto`(h264_mf)也通过。
+  - 取消 `--cancel-ms 300` 在 1 秒内收到 `cancelled`, 输出和 `.avoxkit-part`
+    都不存在。
+  - `queue 3` 三个任务串行完成, task_id 1/2/3, 输出 `out_0/1/2.mp4`。
+  - `caps.features.transcode` 已置 true。
+- **临时文件命名修正**: 用 `stem.avoxkit-part.ext`(如 `a.avoxkit-part.mp4`),
+  扩展名必须在最后; 否则引擎按扩展名选 muxer 会失败。
+- **M1.4 已完成**: Flutter 壳(AkTokens + AppShell + 转换/任务/关于页)、FFI 绑定、
+  事件 TaskStore、Windows bundle; 实测 UI 选 `sample.mp4` → 开始转换 → 完成,
+  输出 `sample.converted.mp4` 正确; 关闭窗口 exit=0。
+- **退出崩溃修复**: 静态 `EventSink`/`TaskRuntime` 的 `std::thread` 在进程退出时
+  仍 joinable, 析构触发 `std::terminate`(0xC0000409)。已给两者加析构 `stop()`,
+  并在 `windows/runner/flutter_window.cpp` 的 `OnDestroy` 里先调 `ak_shutdown`
+  再销毁 FlutterController。
+- **M1.5/M1.6-lite 已完成**:
+  - 启动失败页显示错误码/原因/详情 + “打开日志目录”; 任务失败卡也提供日志入口。
+  - 字体随包分发: `assets/fonts` 放 Albert Sans + JetBrains Mono(均 OFL),
+    `pubspec.yaml` 注册; dist 的 `FontManifest.json` 已包含两族。
+  - `script/build_windows.ps1`: 构建 shim → `flutter build windows --release` →
+    复制 `dist/avoxkit-windows-x64`; 已用 dist 冒烟启动/转换/关闭(exit=0)。
+  - Windows 标题栏强制暗色 (`DWMWA_USE_IMMERSIVE_DARK_MODE`, 创建后与 Show 后
+    各设一次), 已实测生效。
+- **剩余**: 任务失败重试按钮/诊断包导出/干净机器冒烟/安装包; 这些不影响 M1
+  主链验收。
+
+

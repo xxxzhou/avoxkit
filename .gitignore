@@ -20,5 +20,11 @@ native/out/
 *.user
 CMakeUserPresets.json
 
+# ffmpeg 构建产物 (script/ffmpeg/build_ffmpeg.py 输出); 只忽略根目录,
+# native/avtool/third_party 是随仓分发的头文件依赖
+/third_party/
+
 # Local env / machine-specific
 *.local
+dist/
+.video_agent/

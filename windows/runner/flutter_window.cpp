@@ -1,5 +1,7 @@
 #include "flutter_window.h"
 
+#include <windows.h>
+
 #include <optional>
 
 #include "flutter/generated_plugin_registrant.h"
@@ -40,6 +42,17 @@ bool FlutterWindow::OnCreate() {
 }
 
 void FlutterWindow::OnDestroy() {
+  // 在 Dart isolate 销毁前停掉 shim 的线程/回调, 避免退出期竞态。
+  HMODULE native = GetModuleHandleW(L"avoxkit_native.dll");
+  if (native) {
+    using AkShutdown = void (*)();
+    auto shutdown =
+        reinterpret_cast<AkShutdown>(GetProcAddress(native, "ak_shutdown"));
+    if (shutdown) {
+      shutdown();
+    }
+  }
+
   if (flutter_controller_) {
     flutter_controller_ = nullptr;
   }
