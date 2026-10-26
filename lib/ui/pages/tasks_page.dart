@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/task.dart';
 import '../../core/task_store.dart';
 import '../tokens.dart';
+import '../widgets/group_card.dart';
 import '../widgets/panel.dart';
 
 class TasksPage extends StatelessWidget {
@@ -19,25 +20,41 @@ class TasksPage extends StatelessWidget {
         children: [
           const PageHeader(
             title: '任务',
-            description: '转换队列和最近完成的任务。',
+            description: '批量组与单文件任务；失败项可以重试。',
           ),
           const SizedBox(height: 24),
           Expanded(
             child: ListenableBuilder(
               listenable: taskStore,
               builder: (context, _) {
-                final tasks = taskStore.tasks;
-                if (tasks.isEmpty) {
+                final groups = taskStore.groups;
+                final loose = taskStore.tasks
+                    .where((task) => task.groupId == null)
+                    .toList();
+                if (groups.isEmpty && loose.isEmpty) {
                   return const _EmptyTasks();
                 }
-                return ListView.separated(
+                return ListView(
                   padding: const EdgeInsets.only(bottom: 40),
-                  itemCount: tasks.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: 12),
-                  itemBuilder: (context, index) => _TaskCard(
-                    task: tasks[index],
-                    taskStore: taskStore,
-                  ),
+                  children: [
+                    for (final group in groups)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: AkGroupCard(
+                          group: group,
+                          taskStore: taskStore,
+                          showTasks: true,
+                        ),
+                      ),
+                    for (final task in loose)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: _TaskCard(
+                          task: task,
+                          taskStore: taskStore,
+                        ),
+                      ),
+                  ],
                 );
               },
             ),

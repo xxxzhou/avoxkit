@@ -28,13 +28,22 @@ $src = Join-Path $root "build/windows/x64/runner/Release"
 if (-not (Test-Path (Join-Path $src "avoxkit.exe"))) {
   throw "avoxkit.exe not found at $src"
 }
-if (Get-Process avoxkit -ErrorAction SilentlyContinue) {
+$running = Get-Process avoxkit -ErrorAction SilentlyContinue
+if ($running) {
   throw "avoxkit.exe is running; close it before packaging"
 }
 
-if (Test-Path $Dist) { Remove-Item -Recurse -Force $Dist }
+if (Test-Path $Dist) { Remove-Item -Recurse -Force $Dist -ErrorAction Stop }
 New-Item -ItemType Directory -Force -Path $Dist | Out-Null
-Copy-Item (Join-Path $src "*") $Dist -Recurse -Force
+Copy-Item (Join-Path $src "*") $Dist -Recurse -Force -ErrorAction Stop
+
+# 锁文件/竞态会让 Copy-Item 留下旧产物; 时间戳不一致直接失败
+$srcSo = Join-Path $src "data/app.so"
+$distSo = Join-Path $Dist "data/app.so"
+if (-not (Test-Path $distSo)) { throw "dist is missing data/app.so" }
+if ((Get-Item $distSo).LastWriteTime -lt (Get-Item $srcSo).LastWriteTime) {
+  throw "dist app.so is stale; close avoxkit and rebuild"
+}
 
 Write-Host ""
 Write-Host "portable build: $Dist"

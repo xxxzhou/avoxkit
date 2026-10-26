@@ -48,6 +48,7 @@ struct Task {
   int64_t id = 0;
   int64_t run_id = 1;
   std::string kind;
+  std::string group_id;
   std::string input;
   std::string output;
   std::string temp;
@@ -91,7 +92,7 @@ json base_event(const Task& task, const char* type) {
   j["ts_ms"] = now_ms();
   j["task_id"] = task.id;
   j["run_id"] = task.run_id;
-  j["group_id"] = nullptr;
+  j["group_id"] = task.group_id.empty() ? json(nullptr) : json(task.group_id);
   j["kind"] = task.kind;
   j["type"] = type;
   return j;
@@ -417,6 +418,14 @@ std::shared_ptr<Task> parse_task(const std::string& text, int32_t& code,
     error = "unsupported kind: " + kind;
     return nullptr;
   }
+  std::string group_id;
+  if (root.contains("group_id")) {
+    if (root["group_id"].is_string()) {
+      group_id = root["group_id"].get<std::string>();
+    } else if (root["group_id"].is_number_integer()) {
+      group_id = std::to_string(root["group_id"].get<int64_t>());
+    }
+  }
 
   json params = json::object();
   if (root.contains("params") && root["params"].is_object()) {
@@ -612,6 +621,7 @@ std::shared_ptr<Task> parse_task(const std::string& text, int32_t& code,
 
   auto task = std::make_shared<Task>();
   task->kind = kind;
+  task->group_id = group_id;
   task->input = input_path.u8string();
   task->output = output_path.u8string();
   task->temp = temp_path.u8string();

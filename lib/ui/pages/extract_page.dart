@@ -4,9 +4,14 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 
+import '../../core/batch.dart';
+import '../../core/batch_submit.dart';
 import '../../core/engine.dart';
+import '../../core/folder_source.dart';
 import '../../core/task_store.dart';
 import '../tokens.dart';
+import '../widgets/folder_card.dart';
+import '../widgets/group_card.dart';
 import '../widgets/media_source.dart';
 import '../widgets/panel.dart';
 import '../widgets/task_summary.dart';
@@ -31,6 +36,13 @@ class ExtractPage extends StatefulWidget {
 }
 
 class _ExtractPageState extends State<ExtractPage> {
+  final FolderSource _folder = FolderSource(
+    extensions: const ['mkv', 'mp4', 'mov', 'avi', 'ts', 'flv', 'webm', 'wmv', 'm4v'],
+    skipStemSuffixes: const [],
+    rootTag: 'audio',
+    policy: OutputPolicy.sidecar,
+  );
+
   String? _inputPath;
   String? _outputPath;
   Map<String, dynamic>? _media;
@@ -41,10 +53,27 @@ class _ExtractPageState extends State<ExtractPage> {
   String _format = 'm4a';
   int _bitrate = 192;
   int? _lastTaskId;
+  int? _lastGroupId;
   bool _submitting = false;
+
+  @override
+  void dispose() {
+    _folder.dispose();
+    super.dispose();
+  }
 
   Map<String, dynamic>? get _audioTrack =>
       AkMediaInfo.firstTrack(_media?['audio']);
+
+  String get _targetExtension => _format == 'mp3' ? 'mp3' : 'm4a';
+
+  String get _abiCodec => _format == 'copy'
+      ? 'copy'
+      : (_format == 'mp3' ? 'mp3' : 'aac');
+
+  BatchPlan? _plan() => _folder.hasFolder
+      ? _folder.planFor(extension: _targetExtension, sidecarSuffix: '')
+      : null;
 
   String get _outputExtension {
     if (_format == 'mp3') {
@@ -73,6 +102,7 @@ class _ExtractPageState extends State<ExtractPage> {
       return;
     }
     final path = file.path;
+    _folder.clear();
     setState(() {
       _inputPath = path;
       _outputPath = _suggestedOutput(path);
@@ -80,6 +110,7 @@ class _ExtractPageState extends State<ExtractPage> {
       _media = null;
       _probeError = null;
       _probing = true;
+      _lastGroupId = null;
     });
     try {
       final media = widget.engine.probe(path);
@@ -104,15 +135,35 @@ class _ExtractPageState extends State<ExtractPage> {
     }
   }
 
+  Future<void> _pickFolder() async {
+    final path = await getDirectoryPath();
+    if (path == null) {
+      return;
+    }
+    setState(() {
+      _inputPath = null;
+      _outputPath = null;
+      _media = null;
+      _probeError = null;
+      _lastTaskId = null;
+      _lastGroupId = null;
+      if (_format == 'copy') {
+        _format = 'm4a';
+      }
+    });
+    await _folder.pick(path);
+  }
+
   Future<void> _pickOutput() async {
     final location = await getSaveLocation(
       suggestedName: _outputPath == null
           ? 'audio.$_outputExtension'
           : p.basename(_outputPath!),
       acceptedTypeGroups: [
-        XTypeGroup(label: _outputExtension.toUpperCase(), extensions: [
-          _outputExtension,
-        ]),
+        XTypeGroup(
+          label: _outputExtension.toUpperCase(),
+          extensions: [_outputExtension],
+        ),
       ],
     );
     if (location == null) {
@@ -134,6 +185,13 @@ class _ExtractPageState extends State<ExtractPage> {
   }
 
   Future<void> _submit() async {
+    if (_submitting) {
+      return;
+    }
+    if (_folder.hasFolder) {
+      await _submitFolder();
+      return;
+    }
     final input = _inputPath;
     final output = _outputPath;
     if (input == null) {
@@ -153,20 +211,74 @@ class _ExtractPageState extends State<ExtractPage> {
       final id = widget.taskStore.submitExtract(
         input: input,
         output: output,
-        // UI 的 M4A 对应 AAC 编码, ABI 只认 aac/mp3/copy
-        codec: _format == 'm4a' ? 'aac' : _format,
+        codec: _abiCodec,
         bitrateKbps: _format == 'copy' ? -1 : _bitrate,
       );
       if (!mounted) {
         return;
       }
-      setState(() => _lastTaskId = id);
+      setState(() {
+        _lastTaskId = id;
+        _lastGroupId = null;
+      });
       _snack('已加入队列 · 任务 #$id');
     } catch (error) {
       if (!mounted) {
         return;
       }
       _snack(error is EngineException ? error.message : '$error');
+    } finally {
+      if (mounted) {
+        setState(() => _submitting = false);
+      }
+    }
+  }
+
+  Future<void> _submitFolder() async {
+    final plan = _plan();
+    if (plan == null || plan.pending.isEmpty) {
+      _snack('当前没有可处理的文件');
+      return;
+    }
+    setState(() => _submitting = true);
+    try {
+      final params = TaskStore.extractParams(
+        codec: _abiCodec,
+        bitrateKbps: _bitrate,
+      );
+      final group = widget.taskStore.createGroup(
+        title: p.basename(_folder.root!),
+        root: _folder.root!,
+        kind: 'extract',
+        toolLabel: '提取音频',
+        outputPolicy: _folder.policy.name,
+        params: params,
+        skipped: plan.skippedExisting,
+      );
+      final failures = submitBatch(
+        store: widget.taskStore,
+        groupId: group.id,
+        plan: plan,
+        submitOne: (input, output, groupId) => widget.taskStore.submitExtract(
+          input: input,
+          output: output,
+          codec: _abiCodec,
+          bitrateKbps: _bitrate,
+          groupId: groupId,
+        ),
+      );
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _lastGroupId = group.id;
+        _lastTaskId = null;
+      });
+      _snack(
+        failures == 0
+            ? '已提交 ${plan.count} 个任务'
+            : '已提交 ${plan.count - failures} 个，$failures 个被拒绝（可能没有音轨）',
+      );
     } finally {
       if (mounted) {
         setState(() => _submitting = false);
@@ -182,43 +294,51 @@ class _ExtractPageState extends State<ExtractPage> {
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(32, 32, 32, 40),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const PageHeader(
-            title: '提取音频',
-            description: '把视频里的音轨单独导出。文件只在本机处理。',
+    return ListenableBuilder(
+      listenable: _folder,
+      builder: (context, _) {
+        final plan = _plan();
+        return SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(32, 32, 32, 40),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const PageHeader(
+                title: '提取音频',
+                description: '把一个或一整个文件夹的视频音轨单独导出。'
+                    '文件只在本机处理。',
+              ),
+              const SizedBox(height: 24),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final wide = constraints.maxWidth >= 980;
+                  final left = _buildSourcePanel();
+                  final right = _buildOptionsPanel(plan);
+                  if (wide) {
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(flex: 3, child: left),
+                        const SizedBox(width: 24),
+                        Expanded(flex: 2, child: right),
+                      ],
+                    );
+                  }
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [left, const SizedBox(height: 24), right],
+                  );
+                },
+              ),
+            ],
           ),
-          const SizedBox(height: 24),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final wide = constraints.maxWidth >= 980;
-              final left = _buildSourcePanel();
-              final right = _buildOptionsPanel();
-              if (wide) {
-                return Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(flex: 3, child: left),
-                    const SizedBox(width: 24),
-                    Expanded(flex: 2, child: right),
-                  ],
-                );
-              }
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [left, const SizedBox(height: 24), right],
-              );
-            },
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
   Widget _buildSourcePanel() {
+    final folderMode = _folder.hasFolder;
     final hasAudio = _audioTrack != null;
     return Panel(
       child: Column(
@@ -226,9 +346,9 @@ class _ExtractPageState extends State<ExtractPage> {
         children: [
           Row(
             children: [
-              Text('源文件', style: AkText.panelTitle),
+              Text(folderMode ? '文件夹' : '源文件', style: AkText.panelTitle),
               const Spacer(),
-              if (_inputPath != null)
+              if (_inputPath != null && !folderMode)
                 TextButton(
                   onPressed: _pickInput,
                   child: const Text('重新选择'),
@@ -236,8 +356,36 @@ class _ExtractPageState extends State<ExtractPage> {
             ],
           ),
           const SizedBox(height: 16),
-          if (_inputPath == null)
-            AkSourcePicker(onTap: _pickInput, title: '选择带音轨的视频')
+          if (folderMode)
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                FolderCard(
+                  source: _folder,
+                  plan: _plan(),
+                  onPickAnother: _pickFolder,
+                ),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton(
+                    onPressed: _pickInput,
+                    child: const Text('改成处理单个文件'),
+                  ),
+                ),
+              ],
+            )
+          else if (_inputPath == null)
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                AkSourcePicker(onTap: _pickInput, title: '选择带音轨的视频'),
+                const SizedBox(height: 8),
+                TextButton(
+                  onPressed: _pickFolder,
+                  child: const Text('或处理一个文件夹'),
+                ),
+              ],
+            )
           else
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -279,25 +427,43 @@ class _ExtractPageState extends State<ExtractPage> {
                     ),
                   ],
                 ],
+                const SizedBox(height: 12),
+                TextButton(
+                  onPressed: _pickFolder,
+                  child: const Text('改成处理整个文件夹'),
+                ),
               ],
             ),
           const SizedBox(height: 20),
           const Divider(height: 1),
           const SizedBox(height: 16),
           Text(
-            '输出默认放在源文件旁边；导出 mp3 需要重新编码，其余格式可原样封装。',
+            folderMode
+                ? '文件夹里没有音轨的视频会在提交时被拒绝，不影响其他文件。'
+                : '输出默认放在源文件旁边；导出 mp3 需要重新编码，其余格式可原样封装。',
             style: AkText.micro,
           ),
           const SizedBox(height: 20),
-          AkLatestTask(taskStore: widget.taskStore, taskId: _lastTaskId),
+          if (_lastGroupId != null)
+            AkGroupCard(
+              group: widget.taskStore.groupById(_lastGroupId)!,
+              taskStore: widget.taskStore,
+            )
+          else
+            AkLatestTask(taskStore: widget.taskStore, taskId: _lastTaskId),
         ],
       ),
     );
   }
 
-  Widget _buildOptionsPanel() {
+  Widget _buildOptionsPanel(BatchPlan? plan) {
+    final folderMode = _folder.hasFolder;
     final hasAudio = _audioTrack != null;
     final audioCodec = _audioTrack?['codec'];
+    final canSubmit = !_submitting &&
+        (!folderMode
+            ? hasAudio
+            : ((plan?.pending.isNotEmpty ?? false) && _lastGroupId == null));
     return Panel(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -307,10 +473,11 @@ class _ExtractPageState extends State<ExtractPage> {
           Text('音频格式', style: AkText.label),
           const SizedBox(height: 8),
           SegmentedButton<String>(
-            segments: const [
-              ButtonSegment(value: 'm4a', label: Text('M4A')),
-              ButtonSegment(value: 'mp3', label: Text('MP3')),
-              ButtonSegment(value: 'copy', label: Text('原始音轨')),
+            segments: [
+              const ButtonSegment(value: 'm4a', label: Text('M4A')),
+              const ButtonSegment(value: 'mp3', label: Text('MP3')),
+              if (!folderMode)
+                const ButtonSegment(value: 'copy', label: Text('原始音轨')),
             ],
             selected: {_format},
             showSelectedIcon: false,
@@ -318,7 +485,9 @@ class _ExtractPageState extends State<ExtractPage> {
           ),
           const SizedBox(height: 8),
           Text(
-            _format == 'copy'
+            folderMode
+                ? '批量导出按扩展名生成 M4A 或 MP3；原始音轨需逐文件探测容器，暂不提供。'
+                : _format == 'copy'
                 ? '不重新编码，速度最快；目标容器不支持时会自动转码。'
                 : 'AAC 兼容性好；MP3 通用性最强。',
             style: AkText.micro,
@@ -354,42 +523,56 @@ class _ExtractPageState extends State<ExtractPage> {
             Text('源音轨：${audioCodec.toUpperCase()}', style: AkText.micro),
           ],
           const SizedBox(height: 20),
-          Text('输出文件', style: AkText.label),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  _outputPath == null ? '尚未选择' : p.basename(_outputPath!),
-                  style: AkText.body.copyWith(
-                    color: _outputPath == null
-                        ? AkColors.faint
-                        : AkColors.text,
+          if (folderMode)
+            OutputPolicyPicker(source: _folder)
+          else ...[
+            Text('输出文件', style: AkText.label),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    _outputPath == null ? '尚未选择' : p.basename(_outputPath!),
+                    style: AkText.body.copyWith(
+                      color: _outputPath == null
+                          ? AkColors.faint
+                          : AkColors.text,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
                 ),
-              ),
-              const SizedBox(width: 8),
-              OutlinedButton(
-                onPressed: _pickOutput,
-                child: const Text('选择'),
+                const SizedBox(width: 8),
+                OutlinedButton(
+                  onPressed: _pickOutput,
+                  child: const Text('选择'),
+                ),
+              ],
+            ),
+            if (_outputPath != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                p.dirname(_outputPath!),
+                style: AkText.micro,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
             ],
-          ),
-          if (_outputPath != null) ...[
-            const SizedBox(height: 4),
-            Text(
-              p.dirname(_outputPath!),
-              style: AkText.micro,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
           ],
           const SizedBox(height: 28),
           FilledButton(
-            onPressed: (_submitting || !hasAudio) ? null : _submit,
-            child: Text(_submitting ? '提交中…' : '开始提取'),
+            onPressed: canSubmit ? _submit : null,
+            child: Text(
+              _submitting
+                  ? '提交中…'
+                  : folderMode
+                  ? (_lastGroupId != null
+                        ? '已提交 ${plan?.count ?? 0} 个文件'
+                        : plan == null || plan.pending.isEmpty
+                        ? '没有可处理的文件'
+                        : '开始处理 ${plan.count} 个文件')
+                  : '开始提取',
+            ),
           ),
         ],
       ),

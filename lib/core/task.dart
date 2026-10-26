@@ -8,12 +8,16 @@ class TaskItem {
     required this.kind,
     this.input,
     this.output,
+    this.groupId,
   }) : createdAt = DateTime.now();
 
   final int id;
   final String kind;
   String? input;
   final DateTime createdAt;
+
+  /// 批量任务所属组; 单文件任务为 null
+  int? groupId;
 
   String state = 'queued';
   String? stage;

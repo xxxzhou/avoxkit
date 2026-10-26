@@ -9,14 +9,14 @@
 
 ## What it does (planned first release)
 
-1. **Convert** — HEVC → H.264 and one-click presets (Bilibili / Douyin / WeChat / Discord…).
+1. **Convert** — HEVC → H.264 and one-click presets (Bilibili / Douyin / WeChat / Discord…); a single file or a whole folder.
 2. **Compress** — shrink a video to a target size (e.g. 10 MB for chat apps).
-3. **Remux & extract audio** — lossless MKV ↔ MP4 container swap; export MP3 / WAV / M4A.
+3. **Remux & extract audio** — lossless MKV ↔ MP4 container swap; export MP3 / M4A; folders supported.
 4. **Subtitles** — generate SRT from speech, fully offline (nothing uploaded to any cloud).
 5. **Lossless trim** — cut the head/tail without re-encoding.
 6. **Image cleanup** — remove watermarks or logos from photos, fully offline.
 
-Later: subtitle extraction & hard-burn, batch queue, frame grabs / GIF, AI enhancement…
+Later: subtitle extraction & hard-burn, frame grabs / GIF, AI enhancement…
 
 ## Status
 
