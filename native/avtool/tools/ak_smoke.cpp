@@ -46,7 +46,9 @@ void usage() {
       "  probe <file> [work_dir]\n"
       "  transcode <in> <out> <work_dir> [--hardware off|auto|on]\n"
       "            [--codec h264|hevc] [--quality N] [--cancel-ms N]\n"
-      "            [--overwrite]\n"
+      "            [--trans-mode all|audio_copy|video_copy]\n"
+      "            [--audio-codec aac|mp3] [--container mp4|mov|mkv]\n"
+      "            [--width N --height N] [--overwrite]\n"
       "  queue <in> <out_dir> <work_dir> <count> [--hardware off|auto|on]\n"
       "  remux <in> <out> <work_dir> [--overwrite]\n"
       "  extract <in> <out> <work_dir> [--codec aac|mp3|copy]\n"
@@ -113,7 +115,10 @@ void on_event(const char* event_json, void*) {
 nlohmann::json make_task(const std::string& input, const std::string& output,
                          const std::string& hardware,
                          const std::string& codec, int32_t quality,
-                         bool overwrite) {
+                         bool overwrite, const std::string& trans_mode,
+                         int32_t width, int32_t height,
+                         const std::string& audio_codec = "aac",
+                         const std::string& container = "mp4") {
   nlohmann::json task;
   task["schema"] = 1;
   task["kind"] = "transcode";
@@ -121,15 +126,22 @@ nlohmann::json make_task(const std::string& input, const std::string& output,
       {{{"kind", "file"}, {"uri", input}}});
   task["outputs"] = nlohmann::json::array(
       {{{"role", "primary"}, {"path", output}}});
+  nlohmann::json video = {{"codec", codec},
+                          {"hardware", hardware},
+                          {"rate_mode", "quality"},
+                          {"quality", quality}};
+  if (width > 0 && height > 0) {
+    video["width"] = width;
+    video["height"] = height;
+  }
   task["params"] = {
-      {"container", "mp4"},
+      {"container", container},
       {"overwrite", overwrite},
-      {"video",
-       {{"codec", codec},
-        {"hardware", hardware},
-        {"rate_mode", "quality"},
-        {"quality", quality}}},
-      {"audio", {{"codec", "aac"}, {"bitrate_kbps", -1}}}};
+      {"video", video},
+      {"audio", {{"codec", audio_codec}, {"bitrate_kbps", -1}}}};
+  if (!trans_mode.empty()) {
+    task["params"]["trans_mode"] = trans_mode;
+  }
   return task;
 }
 
@@ -181,7 +193,9 @@ int run_one(nlohmann::json task, const std::string& output,
 int run_transcode(const std::string& input, const std::string& output,
                   const std::string& work_dir, const std::string& hardware,
                   const std::string& codec, int32_t quality, int cancel_ms,
-                  bool overwrite) {
+                  bool overwrite, const std::string& trans_mode, int32_t width,
+                  int32_t height, const std::string& audio_codec = "aac",
+                  const std::string& container = "mp4") {
   if (init_engine(work_dir) != 0) {
     return 1;
   }
@@ -189,7 +203,9 @@ int run_transcode(const std::string& input, const std::string& output,
   reset_wait(1);
 
   const std::string task_text =
-      make_task(input, output, hardware, codec, quality, overwrite).dump();
+      make_task(input, output, hardware, codec, quality, overwrite, trans_mode,
+                width, height, audio_codec, container)
+          .dump();
   const int64_t task_id = ak_task_submit(task_text.c_str());
   std::printf("task_id=%lld\n", static_cast<long long>(task_id));
   if (task_id < 0) {
@@ -245,7 +261,9 @@ int run_queue(const std::string& input, const std::string& out_dir,
     const auto output = dir / ("out_" + std::to_string(i) + ".mp4");
     std::filesystem::remove(output, ec);
     const std::string text =
-        make_task(input, output.u8string(), hardware, "h264", 60, false).dump();
+        make_task(input, output.u8string(), hardware, "h264", 60, false, "", 0,
+                  0)
+            .dump();
     const int64_t task_id = ak_task_submit(text.c_str());
     std::printf("task_id=%lld\n", static_cast<long long>(task_id));
     if (task_id < 0) {
@@ -324,6 +342,11 @@ int main(int argc, char** argv) {
     int32_t quality = 60;
     int cancel_ms = 0;
     bool overwrite = false;
+    std::string trans_mode;
+    std::string audio_codec = "aac";
+    std::string container = "mp4";
+    int32_t width = 0;
+    int32_t height = 0;
 
     for (int i = 5; i < argc; ++i) {
       const std::string arg = argv[i];
@@ -331,16 +354,27 @@ int main(int argc, char** argv) {
         hardware = argv[++i];
       } else if (arg == "--codec" && i + 1 < argc) {
         codec = argv[++i];
+      } else if (arg == "--audio-codec" && i + 1 < argc) {
+        audio_codec = argv[++i];
+      } else if (arg == "--container" && i + 1 < argc) {
+        container = argv[++i];
       } else if (arg == "--quality" && i + 1 < argc) {
         quality = std::atoi(argv[++i]);
       } else if (arg == "--cancel-ms" && i + 1 < argc) {
         cancel_ms = std::atoi(argv[++i]);
+      } else if (arg == "--trans-mode" && i + 1 < argc) {
+        trans_mode = argv[++i];
+      } else if (arg == "--width" && i + 1 < argc) {
+        width = std::atoi(argv[++i]);
+      } else if (arg == "--height" && i + 1 < argc) {
+        height = std::atoi(argv[++i]);
       } else if (arg == "--overwrite") {
         overwrite = true;
       }
     }
     return run_transcode(input, output, work_dir, hardware, codec, quality,
-                         cancel_ms, overwrite);
+                         cancel_ms, overwrite, trans_mode, width, height,
+                         audio_codec, container);
   }
 
   if (command == "queue") {

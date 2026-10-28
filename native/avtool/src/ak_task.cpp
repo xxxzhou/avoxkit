@@ -136,7 +136,7 @@ const char* category_for(const std::string& code) {
     return "output";
   }
   if (code == "decode_failed" || code == "encode_failed" ||
-      code == "mux_failed") {
+      code == "mux_failed" || code == "audio_missing") {
     return "codec";
   }
   if (code == "cancelled") {
@@ -163,10 +163,24 @@ const char* hint_for(const std::string& code) {
     return "choose_output";
   }
   if (code == "internal" || code == "encode_failed" ||
-      code == "decode_failed") {
+      code == "decode_failed" || code == "audio_missing") {
     return "open_log_dir";
   }
   return "retry";
+}
+
+// 音频编码器打不开时引擎只记一条日志, 录制器照常收尾; 没音轨的产物不能报成功
+bool output_has_audio(const std::string& path) {
+  const char* raw = ak_probe(path.c_str());
+  if (!raw) {
+    return true;
+  }
+  json j = json::parse(raw, nullptr, false);
+  ak_free_string(raw);
+  if (j.is_discarded() || !j.contains("audio") || !j["audio"].is_array()) {
+    return true;  // 探测失败不冒判失败
+  }
+  return !j["audio"].empty();
 }
 
 void emit_error(Task& task, const char* code, const char* message,
@@ -965,6 +979,17 @@ class TaskRuntime {
     cleanup_recorder(*task);
 
     if (completed) {
+      const bool encodesAudio =
+          (task->kind == "transcode" || task->kind == "extract") &&
+          task->acodec != ACodecId::none && !task->audio_copy;
+      if (encodesAudio && !output_has_audio(task->temp)) {
+        std::filesystem::remove(std::filesystem::u8path(task->temp), ec);
+        emit_error(*task, "audio_missing", "Audio track missing in output",
+                   "audio encoder failed; check codec/channel support");
+        log(LogLevel::error, "task failed id=" + std::to_string(task->id) +
+                                 " code=audio_missing");
+        return;
+      }
       std::string move_error;
       if (rename_output(*task, move_error)) {
         emit_done(*task);
