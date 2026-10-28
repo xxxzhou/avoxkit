@@ -140,7 +140,33 @@ ffprobe -v error -select_streams v:0 \
 `av_interleaved_write_frame non-fatal`。remux 与 `--trans-mode video_copy` 共用
 这条链路，`ak_features_test` 的 remux / video_copy 用例同时覆盖。
 
-### 2.4 ASR 冒烟（可选，需先下载模型）
+### 2.4 帧序与片尾回归
+
+两个独立事故都表现为「产物不对」：
+
+- **画面来回抖**：`copyBufHost` 原地复用环槽 `VideoFrame`，编码线程 `dequeue`
+  后在锁外读取时被下一帧覆写，画面内容和 pts 串帧。B 帧流上表现为某帧内容跳到
+  4 帧后（P 帧显示位）再跳回，暗场慢镜头最明显。
+- **片尾少一截**：关源前不排空解码器（重排/帧级线程扣住的尾帧），编码器
+  `drain` 出的包又被 `close()` 提前置 `bReady=false` 塞进 pending 清掉。
+
+```bash
+native/avtool/build/bin/Release/ak_smoke.exe transcode in.mkv out.mkv work \
+  --codec h264 --width 1280 --height 720 --hardware off \
+  --trans-mode audio_copy --container mkv --overwrite
+```
+
+断言：
+
+- `ffprobe -count_frames` 产物帧数 == 源帧数（片尾不丢）；
+- 包 pts 无 >50ms 空洞、无重复（源自身的不连续除外）；
+- 逐帧内容对位：解码后第 i 帧应等于源第 i-1 帧（产物起点 +0.083s）。个别帧
+  跳到 +4 帧即环槽复用竞态复发。
+
+日志里 `video encoder drain, sent:N` 的 N 应等于源帧数；`sent` 小于源帧数说明
+`AMediaSource::onComplete` 没有排空解码器。
+
+### 2.5 ASR 冒烟（可选，需先下载模型）
 
 模型是运行时资源，不进仓库。手工验证时：
 
