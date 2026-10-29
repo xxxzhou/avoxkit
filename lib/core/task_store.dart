@@ -43,6 +43,42 @@ class TaskStore extends ChangeNotifier {
     return values;
   }
 
+  /// 批量组的预览目标: 正在跑的那一路, 否则退回最早排队的占位
+  TaskItem? previewTaskOfGroup(int? groupId) {
+    if (groupId == null) {
+      return null;
+    }
+    return pickPreviewTask(tasksOfGroup(groupId));
+  }
+
+  static TaskItem? pickPreviewTask(List<TaskItem> tasks) {
+    for (final task in tasks) {
+      if (task.state == 'running') {
+        return task;
+      }
+    }
+    for (final task in tasks) {
+      if (task.state == 'queued') {
+        return task;
+      }
+    }
+    return tasks.isEmpty ? null : tasks.last;
+  }
+
+  /// 单 worker FIFO: 前面还有几个未完成任务(含正在跑的那个)
+  int queueAhead(TaskItem task) {
+    var ahead = 0;
+    for (final other in _tasks.values) {
+      if (other.id >= task.id) {
+        continue;
+      }
+      if (other.state == 'queued' || other.state == 'running') {
+        ahead++;
+      }
+    }
+    return ahead;
+  }
+
   TaskGroup createGroup({
     required String title,
     required String root,
@@ -80,10 +116,10 @@ class TaskStore extends ChangeNotifier {
       }
       try {
         _submit(
-          kind: group.kind,
+          kind: task.kind,
           input: task.input!,
           output: task.output!,
-          params: group.params,
+          params: task.params ?? group.params,
           groupId: groupId,
         );
         retried++;
@@ -138,6 +174,23 @@ class TaskStore extends ChangeNotifier {
 
   static Map<String, dynamic> remuxParams({bool overwrite = false}) {
     return {'overwrite': overwrite};
+  }
+
+  /// 转换页按逐文件判定结果提交; kind/params 已由 ConversionPlan 解析
+  int submitResolved({
+    required String kind,
+    required String input,
+    required String output,
+    required Map<String, dynamic> params,
+    int? groupId,
+  }) {
+    return _submit(
+      kind: kind,
+      input: input,
+      output: output,
+      params: params,
+      groupId: groupId,
+    );
   }
 
   int submit({
@@ -235,6 +288,7 @@ class TaskStore extends ChangeNotifier {
     item.input ??= input;
     item.output ??= output;
     item.groupId ??= groupId;
+    item.params ??= params;
     if (group != null && !group.taskIds.contains(id)) {
       group.taskIds.add(id);
     }

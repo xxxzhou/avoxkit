@@ -65,6 +65,25 @@ void main() {
         p.join('C:/media', 'a.converted.mp4'),
       );
     });
+
+    test('按文件扩展名逐项命名', () {
+      final namer = BatchNamer(
+        policy: OutputPolicy.sidecar,
+        extensionOf: (item) =>
+            p.extension(item.path).replaceFirst('.', '').toLowerCase(),
+        sidecarSuffix: '.converted',
+      );
+      final mkv = entry('a.mkv');
+      final mp4 = entry('b.mp4');
+      expect(
+        namer.pathFor(mkv, mkv.path),
+        p.join('C:/media', 'a.converted.mkv'),
+      );
+      expect(
+        namer.pathFor(mp4, mp4.path),
+        p.join('C:/media', 'b.converted.mp4'),
+      );
+    });
   });
 
   group('planBatch', () {

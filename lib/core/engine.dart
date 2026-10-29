@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:ffi';
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:ffi/ffi.dart';
 import 'package:path/path.dart' as p;
@@ -9,6 +10,9 @@ import 'package:path_provider/path_provider.dart';
 
 import '../native/ak_bindings.dart';
 import '../native/ak_events.dart';
+import 'image_plan.dart';
+import 'media_frames.dart';
+import 'media_index.dart';
 
 class EngineException implements Exception {
   EngineException(this.code, this.message);
@@ -28,6 +32,7 @@ class Engine {
   bool ready = false;
   int abi = 0;
   String? workDir;
+  String? modelsDir;
   Map<String, dynamic> version = {};
   Map<String, dynamic> capabilities = {};
   String? errorCode;
@@ -51,14 +56,27 @@ class Engine {
     }
     try {
       await Directory(dir).create(recursive: true);
+    } catch (_) {
+      // 目录建不出来也仍尝试打开
+    }
+    await openFolder(dir);
+  }
+
+  Future<void> openFolder(String path) async {
+    if (path.isEmpty) {
+      return;
+    }
+    try {
       if (Platform.isWindows) {
-        await Process.start('explorer.exe', [dir],
-            mode: ProcessStartMode.detached);
+        await Process.start('explorer.exe', [
+          path,
+        ], mode: ProcessStartMode.detached);
       } else if (Platform.isMacOS) {
-        await Process.start('open', [dir], mode: ProcessStartMode.detached);
+        await Process.start('open', [path], mode: ProcessStartMode.detached);
       } else {
-        await Process.start('xdg-open', [dir],
-            mode: ProcessStartMode.detached);
+        await Process.start('xdg-open', [
+          path,
+        ], mode: ProcessStartMode.detached);
       }
     } catch (_) {
       // 打不开目录不影响主流程
@@ -79,6 +97,7 @@ class Engine {
       this.workDir = workDir;
       final config = jsonEncode({
         'work_dir': workDir,
+        if (modelsDir != null) 'models_dir': modelsDir,
         'log_level': 'info',
       });
       final code = bindings.init(config);
@@ -88,8 +107,9 @@ class Engine {
         return;
       }
 
-      _callable =
-          NativeCallable<AkNativeEventCallback>.listener(_onNativeEvent);
+      _callable = NativeCallable<AkNativeEventCallback>.listener(
+        _onNativeEvent,
+      );
       bindings.setEventCallback(_callable!.nativeFunction);
 
       version = _decode(bindings.versionJson());
@@ -105,11 +125,18 @@ class Engine {
   Future<String> _workDir() async {
     try {
       final support = await getApplicationSupportDirectory();
+      final models = Directory(p.join(support.path, 'models'));
+      await models.create(recursive: true);
+      modelsDir = models.path;
       final dir = Directory(p.join(support.path, 'work'));
       await dir.create(recursive: true);
       return dir.path;
     } catch (_) {
-      final dir = Directory(p.join(Directory.systemTemp.path, 'avoxkit'));
+      final base = Directory(p.join(Directory.systemTemp.path, 'avoxkit'));
+      final models = Directory(p.join(base.path, 'models'));
+      await models.create(recursive: true);
+      modelsDir = models.path;
+      final dir = Directory(p.join(base.path, 'work'));
       await dir.create(recursive: true);
       return dir.path;
     }
@@ -141,8 +168,9 @@ class Engine {
     final result = _decode(bindings.probe(path));
     if (result['ok'] != true) {
       throw EngineException(
-          result['code'] as String? ?? 'probe_failed',
-          result['message'] as String? ?? '无法读取媒体信息');
+        result['code'] as String? ?? 'probe_failed',
+        result['message'] as String? ?? '无法读取媒体信息',
+      );
     }
     return result;
   }
@@ -157,7 +185,114 @@ class Engine {
 
   int cancel(int taskId) => bindings.cancel(taskId);
 
+  // 原生窗口直显预览; 仅 Windows runner 交过主窗句柄后可用, 其余口失败静默
+  bool previewOpen() {
+    try {
+      return bindings.previewOpen() == 0;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  void previewBind(int taskId) {
+    try {
+      bindings.previewBind(taskId);
+    } catch (_) {
+      // 预览是增强, 不是功能前提
+    }
+  }
+
+  void previewUnbind() {
+    try {
+      bindings.previewUnbind();
+    } catch (_) {
+      // 同上
+    }
+  }
+
+  void previewRect(double x, double y, double w, double h) {
+    try {
+      bindings.previewRect(x, y, w, h);
+    } catch (_) {
+      // 同上
+    }
+  }
+
+  void previewClose() {
+    try {
+      bindings.previewClose();
+    } catch (_) {
+      // 同上
+    }
+  }
+
   bool encoderAvailable(String codec) => bindings.encoderProbe(codec) == 1;
+
+  /// 音频包络 + 关键帧。解码走 isolate, 不阻塞 UI; 失败返回 null。
+  Future<MediaIndex?> mediaIndex(String path, {int buckets = 1200}) async {
+    if (!featureEnabled('media_index')) {
+      return null;
+    }
+    try {
+      return await Isolate.run(() => scanMediaIndex(path, buckets));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 参考帧/缩略图。抓帧走 isolate, 失败返回 null(界面退化成只画波形)。
+  Future<MediaFrames?> mediaFrames(
+    String path, {
+    int count = 12,
+    List<int>? timesMs,
+    int width = 320,
+    int quality = 75,
+  }) async {
+    if (!featureEnabled('media_frames')) {
+      return null;
+    }
+    try {
+      return await Isolate.run(
+        () => scanMediaFrames(
+          path,
+          count: count,
+          timesMs: timesMs,
+          width: width,
+          quality: quality,
+        ),
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  bool get trimAvailable => featureEnabled('trim');
+
+  bool get imageAvailable => featureEnabled('image');
+
+  bool get imageInpaintAvailable => featureEnabled('image_inpaint');
+
+  /// 水印检测。模型首次加载要几秒, 走 isolate; 失败带 code 返回给页面。
+  Future<ImageDetectResult> imageDetect(
+    String path, {
+    double threshold = 0.2,
+    String model = 'lama',
+  }) async {
+    if (!imageAvailable) {
+      return const ImageDetectResult(
+        ok: false,
+        code: 'inpaint_unavailable',
+        message: '图像修复组件不可用',
+      );
+    }
+    try {
+      return await Isolate.run(
+        () => scanImageDetection(path, threshold: threshold, model: model),
+      );
+    } catch (error) {
+      return ImageDetectResult(ok: false, code: 'internal', message: '$error');
+    }
+  }
 
   bool featureEnabled(String feature) {
     final features = capabilities['features'];
@@ -214,6 +349,16 @@ class Engine {
         return 'task_not_running';
       case -12:
         return 'not_implemented';
+      case -13:
+        return 'model_missing';
+      case -14:
+        return 'no_subtitle';
+      case -15:
+        return 'stt_unavailable';
+      case -16:
+        return 'inpaint_unavailable';
+      case -17:
+        return 'inpaint_failed';
       default:
         return 'internal';
     }
@@ -245,6 +390,16 @@ class Engine {
         return '任务已结束，不能再操作';
       case -12:
         return '功能尚未实现';
+      case -13:
+        return '语音识别模型未下载';
+      case -14:
+        return '没有可提取的字幕轨';
+      case -15:
+        return '语音识别插件不可用';
+      case -16:
+        return '图像修复组件不可用';
+      case -17:
+        return '图像修复失败';
       default:
         return '内部错误，请查看日志';
     }

@@ -15,6 +15,7 @@ import '../widgets/group_card.dart';
 import '../widgets/media_source.dart';
 import '../widgets/panel.dart';
 import '../widgets/task_summary.dart';
+import '../widgets/task_visual.dart';
 
 const _videoTypes = XTypeGroup(
   label: '视频',
@@ -50,7 +51,8 @@ class _ExtractPageState extends State<ExtractPage> {
   bool _probing = false;
   bool _outputAuto = true;
 
-  String _format = 'm4a';
+  // 默认直拷: "提取音频"多数只是要原轨, 重编码一条 143 分钟的音轨要几分钟
+  String _format = 'copy';
   int _bitrate = 192;
   int? _lastTaskId;
   int? _lastGroupId;
@@ -83,17 +85,33 @@ class _ExtractPageState extends State<ExtractPage> {
       return switch (_audioTrack?['codec']) {
         'mp3' => 'mp3',
         'aac' => 'm4a',
-        _ => 'mkv',
+        // EAC3/DTS/TrueHD 等用 matroska 音频容器; 写 mkv 会和源文件同名
+        _ => 'mka',
       };
     }
     return 'm4a';
   }
 
   String _suggestedOutput(String input) {
-    return p.join(
-      p.dirname(input),
-      '${p.basenameWithoutExtension(input)}.$_outputExtension',
-    );
+    final dir = p.dirname(input);
+    final stem = p.basenameWithoutExtension(input);
+    final ext = _outputExtension;
+    var path = p.join(dir, '$stem.$ext');
+    // 直拷的扩展名可能与源相同, 不能把源文件当输出(会报已存在)
+    if (p.equals(path, input)) {
+      path = p.join(dir, '$stem.extracted.$ext');
+    }
+    // 同名文件已存在时自动加序号; 用户仍可在"输出文件"里改名
+    final outStem = p.basenameWithoutExtension(path);
+    if (File(path).existsSync()) {
+      for (var i = 1; i < 100; i++) {
+        final candidate = p.join(dir, '$outStem ($i).$ext');
+        if (!File(candidate).existsSync()) {
+          return candidate;
+        }
+      }
+    }
+    return path;
   }
 
   Future<void> _pickInput() async {
@@ -375,17 +393,7 @@ class _ExtractPageState extends State<ExtractPage> {
               ],
             )
           else if (_inputPath == null)
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                AkSourcePicker(onTap: _pickInput, title: '选择带音轨的视频'),
-                const SizedBox(height: 8),
-                TextButton(
-                  onPressed: _pickFolder,
-                  child: const Text('或处理一个文件夹'),
-                ),
-              ],
-            )
+            AkSourcePicker(onFile: _pickInput, onFolder: _pickFolder)
           else
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -440,10 +448,26 @@ class _ExtractPageState extends State<ExtractPage> {
           Text(
             folderMode
                 ? '文件夹里没有音轨的视频会在提交时被拒绝，不影响其他文件。'
-                : '输出默认放在源文件旁边；导出 mp3 需要重新编码，其余格式可原样封装。',
+                : '输出默认放在源文件旁边；原始音轨直拷最快，M4A/MP3 会重新编码。',
             style: AkText.micro,
           ),
           const SizedBox(height: 20),
+          if (_lastTaskId != null || _lastGroupId != null)
+            ListenableBuilder(
+              listenable: widget.taskStore,
+              builder: (context, _) {
+                final task = _lastTaskId != null
+                    ? widget.taskStore.taskById(_lastTaskId)
+                    : widget.taskStore.previewTaskOfGroup(_lastGroupId);
+                if (task == null) {
+                  return const SizedBox.shrink();
+                }
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: AkTaskVisual(engine: widget.engine, task: task),
+                );
+              },
+            ),
           if (_lastGroupId != null)
             AkGroupCard(
               group: widget.taskStore.groupById(_lastGroupId)!,
@@ -489,7 +513,7 @@ class _ExtractPageState extends State<ExtractPage> {
                 ? '批量导出按扩展名生成 M4A 或 MP3；原始音轨需逐文件探测容器，暂不提供。'
                 : _format == 'copy'
                 ? '不重新编码，速度最快；目标容器不支持时会自动转码。'
-                : 'AAC 兼容性好；MP3 通用性最强。',
+                : 'AAC 兼容性好；MP3 通用性最强。会按码率重新编码，比直拷慢。',
             style: AkText.micro,
           ),
           if (_format != 'copy') ...[

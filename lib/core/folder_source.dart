@@ -108,7 +108,9 @@ class FolderSource extends ChangeNotifier {
 
   /// 按工具的扩展名/命名规则展开; 结果按参数缓存, 避免拖动滑块时反复查磁盘
   BatchPlan? planFor({
-    required String extension,
+    String? extension,
+    String Function(FolderEntry entry)? extensionFrom,
+    String? extensionTag,
     required String sidecarSuffix,
     bool skipExisting = true,
   }) {
@@ -116,7 +118,8 @@ class FolderSource extends ChangeNotifier {
     if (entries == null || entries.isEmpty) {
       return null;
     }
-    final key = '${identityHashCode(entries)}|$extension|$sidecarSuffix|'
+    final key = '${identityHashCode(entries)}|${extension ?? ''}|'
+        '${extensionTag ?? ''}|$sidecarSuffix|'
         '${policy.name}|$outputRoot|$skipExisting';
     if (key == _cacheKey) {
       return _cached;
@@ -126,6 +129,7 @@ class FolderSource extends ChangeNotifier {
       namer: BatchNamer(
         policy: policy,
         extension: extension,
+        extensionOf: extensionFrom,
         outputRoot: policy == OutputPolicy.sidecar
             ? null
             : (outputRoot ?? suggestRoot(root ?? '')),

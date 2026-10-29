@@ -45,30 +45,42 @@ class BatchPlan {
 class BatchNamer {
   BatchNamer({
     required this.policy,
-    required this.extension,
+    String? extension,
+    this.extensionOf,
     this.outputRoot,
     this.sidecarSuffix = '',
-  });
+  }) : extension = extension ?? '' {
+    assert(this.extension.isNotEmpty || extensionOf != null);
+  }
 
   final OutputPolicy policy;
   final String extension;
+
+  /// 逐文件扩展名(转换页容器跟随源文件); 未提供时用 extension
+  final String Function(FolderEntry entry)? extensionOf;
   final String? outputRoot;
   final String sidecarSuffix;
   final Set<String> _used = {};
 
+  String _extensionFor(FolderEntry entry) {
+    final value = extensionOf?.call(entry) ?? extension;
+    return value.toLowerCase().replaceFirst('.', '');
+  }
+
   String pathFor(FolderEntry entry, String input) {
+    final ext = _extensionFor(entry);
     final stem = p.basenameWithoutExtension(input);
     String candidate;
     switch (policy) {
       case OutputPolicy.sidecar:
         candidate = p.join(
           p.dirname(input),
-          '$stem$sidecarSuffix.$extension',
+          '$stem$sidecarSuffix.$ext',
         );
         if (_samePath(candidate, input)) {
           candidate = p.join(
             p.dirname(input),
-            '$stem.out.$extension',
+            '$stem.out.$ext',
           );
         }
       case OutputPolicy.mirror:
@@ -76,18 +88,18 @@ class BatchNamer {
         candidate = p.join(
           outputRoot!,
           relativeDir == '.' ? '' : relativeDir,
-          '$stem$sidecarSuffix.$extension',
+          '$stem$sidecarSuffix.$ext',
         );
       case OutputPolicy.flat:
         candidate = p.join(
           outputRoot!,
-          '$stem$sidecarSuffix.$extension',
+          '$stem$sidecarSuffix.$ext',
         );
     }
-    return _dedupe(candidate);
+    return _dedupe(candidate, ext);
   }
 
-  String _dedupe(String candidate) {
+  String _dedupe(String candidate, String extension) {
     var result = candidate;
     var index = 2;
     while (!_used.add(result.toLowerCase())) {

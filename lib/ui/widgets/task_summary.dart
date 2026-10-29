@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/task.dart';
 import '../../core/task_store.dart';
@@ -120,14 +121,53 @@ class AkTaskSummary extends StatelessWidget {
           ],
           if (task.state == 'done' && task.output != null) ...[
             const SizedBox(height: 8),
-            Text(
-              task.output!,
+            AkOutputPath(path: task.output!),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// 产物路径: 双击整行复制, 悬停给手型和提示(单击太容易误触)
+class AkOutputPath extends StatelessWidget {
+  const AkOutputPath({super.key, required this.path});
+
+  final String path;
+
+  Future<void> _copy(BuildContext context) async {
+    await Clipboard.setData(ClipboardData(text: path));
+    if (!context.mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('已复制路径到剪贴板'),
+        duration: Duration(seconds: 2),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: '双击复制路径',
+      waitDuration: const Duration(milliseconds: 400),
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onDoubleTap: () => _copy(context),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Text(
+              path,
               style: AkText.micro,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
-          ],
-        ],
+          ),
+        ),
       ),
     );
   }

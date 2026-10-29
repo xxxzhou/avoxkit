@@ -12,11 +12,15 @@ class AkGroupCard extends StatelessWidget {
     required this.group,
     required this.taskStore,
     this.showTasks = false,
+    this.onOpenTask,
   });
 
   final TaskGroup group;
   final TaskStore taskStore;
   final bool showTasks;
+
+  /// 任务页传入; 工具页的紧凑卡不挂跳转
+  final void Function(int taskId)? onOpenTask;
 
   @override
   Widget build(BuildContext context) {
@@ -28,6 +32,8 @@ class AkGroupCard extends StatelessWidget {
         final failed = tasks.where((task) => task.state == 'failed').length;
         final cancelled =
             tasks.where((task) => task.state == 'cancelled').length;
+        final queued = tasks.where((task) => task.state == 'queued').length;
+        final running = tasks.where((task) => task.state == 'running').length;
         final active = tasks.where((task) => task.isActive).length;
         final finished = done + failed + cancelled;
         final progress = tasks.isEmpty ? 0.0 : finished / tasks.length;
@@ -74,7 +80,8 @@ class AkGroupCard extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               Text(
-                '完成 $done · 失败 $failed · 进行中 $active'
+                '完成 $done · 失败 $failed · 进行中 $running'
+                '${queued > 0 ? ' · 排队 $queued' : ''}'
                 '${group.skipped > 0 ? ' · 跳过 ${group.skipped}' : ''}',
                 style: AkText.micro,
               ),
@@ -97,36 +104,48 @@ class AkGroupCard extends StatelessWidget {
                 const Divider(height: 1),
                 const SizedBox(height: 8),
                 for (final task in tasks)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 4),
-                    child: Row(
-                      children: [
-                        StateDot(
-                          color: switch (task.state) {
-                            'done' => AkColors.state,
-                            'failed' => AkColors.danger,
-                            'cancelled' => AkColors.faint,
-                            'running' => AkColors.accent,
-                            _ => AkColors.muted,
-                          },
-                          size: 6,
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            task.title,
-                            style: AkText.micro,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                  InkWell(
+                    onTap: onOpenTask == null
+                        ? null
+                        : () => onOpenTask!(task.id),
+                    borderRadius: BorderRadius.circular(4),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          vertical: 4, horizontal: 4),
+                      child: Row(
+                        children: [
+                          StateDot(
+                            color: switch (task.state) {
+                              'done' => AkColors.state,
+                              'failed' => AkColors.danger,
+                              'cancelled' => AkColors.faint,
+                              'running' => AkColors.accent,
+                              _ => AkColors.muted,
+                            },
+                            size: 6,
                           ),
-                        ),
-                        Text(
-                          task.state == 'failed'
-                              ? (task.errorCode ?? '失败')
-                              : task.stateLabel,
-                          style: AkText.micro,
-                        ),
-                      ],
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              task.title,
+                              style: AkText.micro,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          Text(
+                            task.state == 'failed'
+                                ? (task.errorCode ?? '失败')
+                                : task.state == 'queued'
+                                    ? '前面 ${taskStore.queueAhead(task)} 个'
+                                    : task.stateLabel,
+                            style: AkText.micro,
+                          ),
+                          if (onOpenTask != null)
+                            const Icon(Icons.chevron_right,
+                                size: 14, color: AkColors.faint),
+                        ],
+                      ),
                     ),
                   ),
               ],

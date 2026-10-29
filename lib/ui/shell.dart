@@ -3,9 +3,11 @@ import 'package:flutter/material.dart';
 import '../core/engine.dart';
 import '../core/task_store.dart';
 import 'pages/about_page.dart';
+import 'pages/clip_page.dart';
 import 'pages/convert_page.dart';
 import 'pages/extract_page.dart';
-import 'pages/remux_page.dart';
+import 'pages/repair_page.dart';
+import 'pages/subtitle_page.dart';
 import 'pages/tasks_page.dart';
 import 'tokens.dart';
 import 'widgets/panel.dart';
@@ -28,9 +30,11 @@ class _AppShellState extends State<AppShell> {
   int _index = 0;
 
   static const _items = [
-    _NavSpec('格式转换', Icons.swap_horiz),
+    _NavSpec('转换', Icons.swap_horiz),
+    _NavSpec('截取片段', Icons.content_cut),
     _NavSpec('提取音频', Icons.audiotrack),
-    _NavSpec('封装转换', Icons.layers_outlined),
+    _NavSpec('提取字幕', Icons.subtitles_outlined),
+    _NavSpec('图像修复', Icons.auto_fix_high_outlined),
     _NavSpec('任务', Icons.list_alt),
     _NavSpec('关于', Icons.info_outline),
   ];
@@ -56,12 +60,21 @@ class _AppShellState extends State<AppShell> {
                     ConvertPage(
                       engine: widget.engine,
                       taskStore: widget.taskStore,
+                      active: _index == 0,
+                    ),
+                    ClipPage(
+                      engine: widget.engine,
+                      taskStore: widget.taskStore,
                     ),
                     ExtractPage(
                       engine: widget.engine,
                       taskStore: widget.taskStore,
                     ),
-                    RemuxPage(
+                    SubtitlePage(
+                      engine: widget.engine,
+                      taskStore: widget.taskStore,
+                    ),
+                    RepairPage(
                       engine: widget.engine,
                       taskStore: widget.taskStore,
                     ),

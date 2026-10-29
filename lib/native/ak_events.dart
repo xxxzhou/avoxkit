@@ -13,6 +13,10 @@ class AkEvent {
     this.detail,
     this.hint,
     this.output,
+    this.queuePosition,
+    this.ptsMs,
+    this.bucketMs,
+    this.peaks,
   });
 
   factory AkEvent.fromJson(Map<String, dynamic> json) {
@@ -24,6 +28,11 @@ class AkEvent {
       if (path is String) {
         output = path;
       }
+    }
+    List<int>? peaks;
+    final rawPeaks = json['peaks'];
+    if (rawPeaks is List) {
+      peaks = rawPeaks.whereType<num>().map((value) => value.toInt()).toList();
     }
     return AkEvent(
       type: json['type'] as String? ?? 'unknown',
@@ -39,6 +48,10 @@ class AkEvent {
       detail: json['detail'] as String?,
       hint: json['hint'] as String?,
       output: output,
+      queuePosition: (json['queue_position'] as num?)?.toInt(),
+      ptsMs: (json['pts_ms'] as num?)?.toInt(),
+      bucketMs: (json['bucket_ms'] as num?)?.toInt(),
+      peaks: peaks,
     );
   }
 
@@ -55,6 +68,10 @@ class AkEvent {
   final String? detail;
   final String? hint;
   final String? output;
+  final int? queuePosition;
+  final int? ptsMs;
+  final int? bucketMs;
+  final List<int>? peaks;
 
   bool get isTerminal =>
       type == 'done' ||

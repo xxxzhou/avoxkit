@@ -3,42 +3,44 @@ import 'package:flutter/material.dart';
 import '../tokens.dart';
 import 'panel.dart';
 
-/// 无拖拽时也够用的选片入口: 虚线风格的大按钮 + 隐私提示
+/// 选片入口: 两个按钮, 不再占一大块虚线框
 class AkSourcePicker extends StatelessWidget {
   const AkSourcePicker({
     super.key,
-    required this.onTap,
-    this.title = '选择视频文件',
-    this.hint = '文件不会离开本机',
+    required this.onFile,
+    required this.onFolder,
+    this.hint,
   });
 
-  final VoidCallback onTap;
-  final String title;
-  final String hint;
+  final VoidCallback onFile;
+  final VoidCallback onFolder;
+  final String? hint;
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 20),
-        decoration: BoxDecoration(
-          color: AkColors.bgDeep,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: AkColors.border),
-        ),
-        child: Column(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
           children: [
-            const Icon(Icons.add, color: AkColors.accent, size: 24),
-            const SizedBox(height: 10),
-            Text(title, style: AkText.body),
-            const SizedBox(height: 4),
-            Text(hint, style: AkText.micro),
+            FilledButton.icon(
+              onPressed: onFile,
+              icon: const Icon(Icons.insert_drive_file_outlined, size: 18),
+              label: const Text('打开文件'),
+            ),
+            const SizedBox(width: 10),
+            OutlinedButton.icon(
+              onPressed: onFolder,
+              icon: const Icon(Icons.folder_open_outlined, size: 18),
+              label: const Text('打开文件夹'),
+            ),
           ],
         ),
-      ),
+        if (hint != null) ...[
+          const SizedBox(height: 8),
+          Text(hint!, style: AkText.micro),
+        ],
+      ],
     );
   }
 }

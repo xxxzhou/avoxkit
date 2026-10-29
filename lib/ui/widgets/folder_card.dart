@@ -13,11 +13,15 @@ class FolderCard extends StatelessWidget {
     required this.source,
     required this.plan,
     required this.onPickAnother,
+    this.noun = '视频',
   });
 
   final FolderSource source;
   final BatchPlan? plan;
   final VoidCallback onPickAnother;
+
+  /// 匹配项的称呼; 图像页传「图片」
+  final String noun;
 
   @override
   Widget build(BuildContext context) {
@@ -72,13 +76,13 @@ class FolderCard extends StatelessWidget {
                 )
               else if (scan.count == 0)
                 Text(
-                  '没有找到匹配的视频。支持 mkv / mp4 / mov / avi / ts / flv / webm / wmv。',
+                  '没有找到匹配的$noun。',
                   style: AkText.body.copyWith(color: AkColors.muted),
                 )
               else ...[
                 LabeledRow(
                   label: '匹配',
-                  value: '${scan.count} 个视频 · ${formatSize(scan.totalBytes)}',
+                  value: '${scan.count} 个$noun · ${formatSize(scan.totalBytes)}',
                 ),
                 if (plan != null)
                   LabeledRow(
