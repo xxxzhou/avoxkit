@@ -422,10 +422,10 @@ virtual bool isDefault() const { return false; }
 
 两条路：
 
-- **v1（建议）**：probe/index 的 demux 用 libavformat/libavcodec，抓帧解码后用
+- **v1（已实现）**：probe/index 的 demux 用 libavformat/libavcodec，抓帧解码后用
   `SurfaceRenderVk` 做 YUV→RGBA、HDR tone map 和缩放。同步批处理，行为最容易对齐；
-  支持本地文件和 FFmpeg 能直接打开的 HTTP 源，但不复用 avox 的 HTTP 分段缓存/代理/
-  HLS 逻辑。
+  实现仅本地文件（网络 URI 打开即拒绝，回 `unsupported`），HTTP 直链等网络源等 v2
+  接 avox IO 路径时一并支持，不复用 avox 的 HTTP 分段缓存/代理/HLS 逻辑。
 - **v2**：网络/HLS/代理成为正式需求时，把 reader 的 IO 换成 avox 的 IO 路径或抽出
   可复用的同步 demux 会话；公共接口不变。
 
@@ -503,7 +503,8 @@ ABI；`ak_*` 对 Flutter 仍是阻塞调用，内部只是按 `onReady/onIndexDo
 - 无 Vulkan：抓帧返回 `renderUnavailable`，probe/index 仍正常；UI 显示
   「Vulkan 组件未启用，缩略图/画面预览不可用」，不出现空白图或静默失败。
 - 旋转：普通视频（display matrix=0）画面不变；竖拍 fixture 旋正，且宽高为显示方向。
-- 网络：v1 至少验证一个 HTTP 直链；HLS/RTSP/代理作为 v2 验收项。
+- 网络：v1 仅本地文件，网络 URI 打开即回 `unsupported`
+  （"v1 supports local files only"，已验证）；HTTP 直链/HLS/RTSP/代理作为 v2 验收项。
 
 ## 8. 结论与待确认
 
@@ -512,11 +513,10 @@ ABI；`ak_*` 对 Flutter 仍是阻塞调用，内部只是按 `onReady/onIndexDo
    `ISourceInfo`。命名用 `durationMs/bitRate/formatName`。
 2. **抓帧走 VK**：已定。`SurfaceRenderVk` + `enableImage`，GPU 缩放 + HDR→SDR；
    **无 Vulkan 不兜底**，返回 `renderUnavailable`，UI 显示「Vulkan 组件未启用」。
-   旋转只处理容器 display matrix 声明的 90/180/270，0° 文件完全不动；v1 在缩图后
-   CPU 旋转 320 宽的 RGBA，保证 JPEG 本身是正向的。预览窗口仍保持 16:9 +
-   `BoxFit.contain`，9:16 左右黑边是正常行为；只有时间线 `AkFilmstrip` 按
-   `MediaFrames.width/height` 排版。旋转不出口、不由 avoxkit 二次处理；是否给
-   `VkVideoRender` 补 transpose 层另行决定。
+   旋转只处理容器 display matrix 声明的 90/180/270，0° 文件完全不动；transpose 定稿
+   在渲染入口一次性处理（avox `a62f0ab`），抓帧/预览直接出显示方向画面，调用方不参与
+   旋转。预览窗口仍保持 16:9 + `BoxFit.contain`，9:16 左右黑边是正常行为；只有时间线
+   `AkFilmstrip` 按 `MediaFrames.width/height` 排版。旋转不出口、不由 avoxkit 二次处理。
 3. **同步/异步**：接口按事件驱动设计，结果只经 observer 回调；实现可以先单线程同步
    （回调在调用线程），以后换内部工作线程不改接口。avoxkit shim 用
    `condition_variable` 等回调，对 Flutter 仍保持同步 JSON ABI。
@@ -524,7 +524,7 @@ ABI；`ak_*` 对 Flutter 仍是阻塞调用，内部只是按 `onReady/onIndexDo
    不把 UI 的显示曲线写进引擎。
 5. **轨道描述**：建议复用 `ISourceInfo`/`ISTrackDesc`，只追加 `codecName/isDefault`
    两个虚函数；不另建一套 reader 专用轨道结构。
-6. **v1 网络范围**：建议先本地文件 + FFmpeg 直接支持的 HTTP；HLS/RTSP/代理等需要
-   avox IO 能力时再做 v2。
+6. **v1 网络范围**：已定 v1 仅本地文件（网络 URI 打开即回 `unsupported`）；HTTP
+   直链/HLS/RTSP/代理等需要 avox IO 能力时再做 v2。
 7. **抓帧输出**：建议返回 RGBA8 `IImageBuffer`，JPEG/PNG 编码留在调用方（继续用
    `getImageBytes`）；reader 不绑死图片格式。

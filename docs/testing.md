@@ -25,6 +25,8 @@
 - `clip_plan_test.dart`：时间文本解析/格式化、关键帧吸附、区间校验、trim 参数。
 - `trim_timeline_test.dart`：拖手柄/拖选区/抬起补点/未知片长不响应/悬停与拖动
   的 scrub 时刻/按宽度请求缩略图张数。
+- `filmstrip_test.dart`：格子按引擎输出宽高比排版（竖拍上下留白不裁切、横拍
+  16:9、输出尺寸未知按 16:9 兜底）。
 - `time_viewport_test.dart`：ms↔px 映射、以指针为锚缩放、平移夹取、1 秒最短视口、
   刻度间隔、片长变化重置。
 - `media_frames_test.dart`：抓帧结果解析与坏数据跳过、无视频轨、最近帧选择、
@@ -242,6 +244,38 @@ native/avtool/build/bin/Release/ak_smoke.exe trim trim_src.mp4 out.mp4 work 1000
   limited range 会解成深绿，历史上是输入层上传晚于 submit、首帧消费建图暂存
   导致的。用 10-bit HEVC/H.264 各截一段，`frames <clip> <dir> 1 320 --times 0`
   抽首帧目检；首帧应与源同一时刻的画面一致。
+
+### 2.4.2 竖拍与只读链路（avox IMediaReader）
+
+probe/index/能力探测走 avox `IMediaReader`/`AvoxRuntime`（v1 仅本地文件）；
+`ak_frames` 暂仍走 libav，等 avox grabFrame(P2) 落地后切换。
+
+```bash
+ffmpeg -f lavfi -i "testsrc2=size=640x360:rate=30:duration=6" \
+  -f lavfi -i "sine=frequency=440:sample_rate=48000:duration=6" \
+  -map 0:v -map 1:a -c:v libx264 -preset ultrafast -g 60 -c:a aac -y portrait_src.mp4
+ffmpeg -display_rotation 90 -i portrait_src.mp4 -c copy -y portrait.mp4
+
+native/avtool/build/bin/Release/ak_smoke.exe probe portrait.mp4
+native/avtool/build/bin/Release/ak_smoke.exe index portrait.mp4 300
+native/avtool/build/bin/Release/ak_smoke.exe frames portrait.mp4 <tmp>/strip_p 6 320
+MSYS_NO_PATHCONV=1 native/avtool/build/bin/Release/ak_smoke.exe \
+  probe "http://127.0.0.1:9/a.mp4"
+```
+
+断言：
+
+- `probe`：video 仍报编码方向 640×360，另带 `rotation`（90/270，诊断字段，
+  UI 不消费、不参与布局）。
+- `index`：峰值/关键帧正常，旋转不影响索引。
+- `frames`：输出 320×569（显示方向），画面正立；时间线 `AkFilmstrip` 按
+  该宽高排版（见 `filmstrip_test.dart`），预览窗口保持 16:9 黑边。
+- 网络 URI 打开即回 `ok:false, code=unsupported`（"v1 supports local files only"）。
+- `caps` 含 `"vulkan"` 字段；「Vulkan 未启用」的 UI 文案等 avox grabFrame(P2)
+  接入时一并上线。
+
+参考结果（2026-10-30）：以上全部符合；横拍 strip 8×(320×180)，
+trim 10000–16000 产物 5972ms（±1.5s 容差内）。
 
 ### 2.5 ASR 冒烟（可选，需先下载模型）
 
