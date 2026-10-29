@@ -1,14 +1,14 @@
 # avoxkit 架构(2026-10-26 定稿)
 
 > 本文是技术底稿: 分层决策、任务模型、`ak_*` C ABI 草案、功能→引擎映射、
-> 引擎缺口清单(归 avox 仓)、构建配方、里程碑。
-> 需求与市场取证见 `D:/Work/github/panvox-site/docs/seo/revenue/free-avox-tool-research.md`。
+> 引擎缺口清单(归 avox 仓)、构建配方。部分设计尚未实现；当前用户功能与边界
+> 以 `docs/features.md` 为准。
 
 ## 0. 决策记录
 
-- 2026-10-26: **独立公开仓**, AGPL-3.0(与 avox 同源, GPL 家族, x264/x265 走
+- 2026-10-26: **独立仓库**, AGPL-3.0(与 avox 同源, GPL 家族, x264/x265 走
   gpl flavor 合法)。**不走 avox_cli 路线**——CLI 只当引擎调用面的示范样本;
-  产品有自己的 GUI, 直接调 avox C++ API。**不复用 panvox 私有 shim 代码**,
+  产品有自己的 GUI, 直接调 avox C++ API。**不复用任何私有 shim 代码**,
   自建 `ak_*` 窄 ABI。引擎与 UI 之间所有新能力(队列、进度、参数面)落本仓。
 - 2026-10-26: **ffmpeg 自建脚本**。出厂 ffmpeg 由本仓
   `script/ffmpeg/build_ffmpeg.py` 构建(改自 avox 脚本, 不回写 avox 仓):
@@ -25,15 +25,16 @@
   一致), 启动自检 `--enable-libmp3lame`。avox 源与产物零改动。
 - 2026-10-26: **功能架构定稿**, 见 `docs/functional-architecture.md`。确立:
   功能用 ToolSpec + OptionSchema + Preset + Recipe 表达, 执行用 Task + Stage +
-  Event 收口, 能力用 Capability + Model 显式化; 五个执行族
-  `transcode/remux/extract/analyze/image`; pipeline 留在 shim 内部且保持线性,
-  不做 DAG; 常规新功能零 ABI 变更。本文 §1/§2/§3 的早期草案以该文为准。
+  Event 收口, 能力用 Capability + Model 显式化; 当前执行族
+  `transcode/remux/extract/subtitle/trim/image`, `analyze` 预留; pipeline 留在
+  shim 内部且保持线性, 不做 DAG; 常规新功能零 ABI 变更。本文 §1/§2/§3 的早期
+  草案以该文为准。
 
 ## 1. 总体分层
 
 ```
-┌─ Flutter 桌面壳(avoxkit UI, Win/mac/Linux 一套码)
-│    任务列表 + 参数表单 + 进度; 不出现任何「剪辑时间线」
+┌─ Flutter 桌面壳(avoxkit UI, 当前发布 Windows；三端结构预留)
+│    任务列表 + 参数表单 + 进度; 不出现多轨剪辑时间线, 截取页只有区间尺
 │        │  dart:ffi
 ├─ native/avtool —— 本仓自建 C ABI shim (avoxkit_native.dll/.so/.dylib)
 │    任务模型: 队列/并发上限/进度/取消/重试; 参数解析(内部格式)
@@ -45,11 +46,10 @@
 └─ ffmpeg(gpl flavor + libmp3lame, avox 构建脚本产出) + onnx 模型(字幕)
 ```
 
-与 panvox 同构的部分只有「Flutter + FFI + C shim + 引擎」这个**模式**;
-代码各写各的。avox 无官方 C 导出层, panvox 的 `pvx_*` 是私有 shim——这就是
-本仓 native 层存在的理由。
+与 avox 的分层模式是「Flutter + FFI + C shim + 引擎」；本仓代码自建。
+avox 没有官方 C 导出层, 因此本仓 native 层负责任务/事件/参数边界。
 
-## 2. `ak_*` C ABI 草案(v0, M1 定稿后冻结)
+## 2. `ak_*` C ABI(v1，当前 minor 5)
 
 > 早期草案: ABI v1 的函数面、事件所有权(`ak_event_free`)、`ak_init(config_json)`、
 > 能力探测与版本协商以 `docs/functional-architecture.md` §5 为准。
@@ -71,28 +71,62 @@ int         ak_task_remove(int64_t task_id);         // 队列中移除
 int         ak_pause_all(int pause);                 // 全局暂停/恢复(可选)
 
 // 回调(注册一次): on_event(const char* event_json, void* user)
-//   event_json: {type: progress|state|error|done, task_id, ...}
+//   event_json: {type: progress|state|wave|error|done, task_id, ...}
+//   queued 的 state 事件带 queue_position(1 起); wave 带 pts_ms/bucket_ms/peaks[]
 typedef void (*ak_event_cb)(const char* event_json, void* user);
 int         ak_set_event_cb(ak_event_cb cb, void* user);
 
 // 探测(表单要用)
 const char* ak_probe(const char* input_path);        // 时长/轨/编解码器摘要
-int         ak_encoder_probe(void);                  // 硬编可用性(真编验证)
+// 只读索引(v1.4): 音频包络峰值 + 视频关键帧时间, 供截取时间线;
+// buckets 64-4000, 返回 {ok,duration_ms,bucket_ms,has_audio,peaks,keyframes_ms}
+const char* ak_media_index(const char* input_path, int32_t buckets);
+// 参考帧/缩略图(v1.5): 按时间 backward seek 抓帧, 采样缩放后出 JPEG base64;
+// request = {count|times_ms, width, quality},
+// 返回 {ok,duration_ms,has_video,width,height,frames:[{ms,image}]}
+const char* ak_media_frames(const char* input_path, const char* request_json);
+int         ak_encoder_probe(const char* codec);      // 编码器注册检查；真编验证未实现
+
+// 原生窗口直显预览(v1.2, Windows): 窗口归页面, 绑定归当前可见任务;
+// 只有录制中的任务显示原生窗, 排队/终态保持隐藏。其余平台 not_implemented。
+int         ak_preview_set_host(void* host_hwnd);
+int         ak_preview_open(void);
+int         ak_preview_bind(int64_t task_id);
+int         ak_preview_unbind(void);
+int         ak_preview_rect(double x, double y, double w, double h);
+int         ak_preview_close(void);
 ```
+
+> 预览接/摘视口 = `setSurface(hwnd)` / `setOffSurface(yuv)`: WindowRender 拿到
+> 窗口时自动启动呈现线程, 摘掉后循环继续消费、处理不停。宿主不需要开停接口。
 
 task_json 形状(例):
 ```json
-{"kind":"transcode",
- "source":{"kind":"file","uri":"C:/x/a.mkv"},
- "output":"C:/x/a.mp4",
- "video":{"codec":"h264","hardware":"off","rate_mode":"quality",
-          "quality":60,"resolution":"source"},
- "audio":{"codec":"aac"},
- "preset":"bilibili_1080p"}
+{"schema":1, "kind":"transcode",
+ "sources":[{"kind":"file","uri":"C:/media/input.mkv"}],
+ "outputs":[{"role":"primary","path":"C:/media/output.mp4"}],
+ "params":{
+   "container":"mp4",
+   "trans_mode":"audio_copy",
+   "video":{"codec":"hevc","width":1280,"height":720,
+            "hardware":"off","rate_mode":"quality","quality":60},
+   "audio":{"codec":"aac","bitrate_kbps":-1}}}
 ```
 
-kind 集合 = `transcode | remux | extract_audio | asr | trim | burn_sub | image_inpaint`。
-(`trim`/`burn_sub` 依赖 avox 侧缺口, `image_inpaint` 引擎现成; 见 §5。)
+当前 kind 集合 = `transcode | remux | extract | subtitle | trim | image`；
+`analyze` 尚未实现，URL 输入尚未在 UI 开放。
+
+> `trim`(2026-10-28 已落地): 复用 TranscodeRecorder; 开录前 `io.startFrac`
+> 定位到起点前最近关键帧, `params.trim.start_ms/end_ms` 由 shim 校验, 到出点
+> 主动 close(非排空)截断。**这是重新编码的片段截取, 不是无损剪切**;
+> 无损剪切仍等 avox M4 的 StreamRecorder seek+remux 成品 API。
+
+**kind 由转换页逐文件判定后提交**, 用户只选输出目标:
+- 视频/音频都直拷且容器变化 → `remux`;
+- 其余 → `transcode`, `trans_mode` 三选一(`all` / `audio_copy` / `video_copy`);
+- `video.width/height` 只在需要缩放时出现, shim 转 `IRecorder::setVideoDesc`;
+- 容器装不下的音频编码由 `AudioCopy` 的 `audioCopySupported` 回退转码;
+  `remux` 全直拷没有回退, 因此判定在提交前完成。
 
 ### 2.1 输入来源模型
 
@@ -103,37 +137,77 @@ kind 集合 = `transcode | remux | extract_audio | asr | trim | burn_sub | image
 - **URL**: 只收直链媒体——http(s) 直链、HLS(`.m3u8`)、`rtsp`、`rtmp`。
   引擎侧已支持(`IOParseFF`: HTTP 分段缓存/TLS/RTSP transport/RTMP 超时)。
   明确不支持: 视频网站页面链接(需站点解析)、登录态/Cookie、DRM、上传。
+  当前 UI 尚未开放 URL 输入，以下为预留模型。
 - 统一先 `ak_probe(uri)` 出时长/轨/码率/是否支持 Range; URL 任务多一个
   `fetching` 阶段, 不支持 Range 时先下载到临时目录再处理。
-- 任务 JSON 不区分 UI 来源; shim 按 scheme 判定。任务卡显示来源徽标
-  (本地/网络/链接)。
+- 任务 JSON 不区分 UI 来源; shim 按 scheme 判定。当前任务卡显示文件名与状态；
+  来源徽标预留。
 
 ## 3. 任务模型与队列
 
 - 引擎对象级并发天然可用(每个 IRecorder 独立实例), 但引擎**没有**队列/
   上限/重试框架——全部在本仓 shim 层建: 一个优先级队列 + 并发闸
-  (默认 1 转码任务, 硬编探测通过后可放宽到 2)+ 失败重试(瞬态错误)。
+  (当前固定 1 个转码任务) + 失败重试(预留)。
 - 状态机: `queued → running → done | failed | cancelled`; 进度事件直接透传
   引擎 RecorderProgress(currentMs/totalMs)(avox `AvoxMuxer.h:72-94`),
-  百分比/ETA 由 UI 算。
+  百分比由 UI 算；ETA 预留。
 - 取消走引擎 close 排空语义(`TranscodeRecorder.hpp:121-128`), 不杀线程。
 
 ## 4. 功能 → 引擎映射(现成, 引用 avox 仓内路径)
 
+> 下表是引擎能力映射，不代表当前 UI 已开放；当前可用功能与边界见
+> `docs/features.md`。
+
 | 功能 | 引擎现状 | 位置(avox) |
 |---|---|---|
-| 格式转换/压缩 | TranscodeRecorder: 解码→Vulkan 处理→重编码→封装 | `src/avox/muxer/TranscodeRecorder.hpp` |
+| 格式转换/编码调整 | TranscodeRecorder: 解码→Vulkan 处理→重编码→封装 | `src/avox/muxer/TranscodeRecorder.hpp` |
+| 片段截取 | TranscodeRecorder + io.startFrac(关键帧起点) + 到点 close | 同上; 终点随解码/封装的排队深度有 ±0.5s 误差 |
+| 媒体索引(时间线) | libavformat demux + 仅解音频求峰值 + 视频关键帧 pts | shim `src/ak_index.cpp`; 与 probe 同一套 FFmpeg |
+| 参考帧/缩略图 | 软件解码 + 直接采样缩放(不落全尺寸 RGBA) + avox stb JPEG 出口 | shim `src/ak_frames.cpp`; 只读, 无临时文件 |
 | 网络直链输入 | IOParseFF: HTTP 分段缓存/TLS/HLS/RTSP/RTMP | `src/avox_ffmpeg/IOParseFF.cpp` |
-| 输出参数面 | quality/cbr/vbr/gop/profile/分辨率/音频重采样 | `src/avox/AvoxMuxer.h:132-196` |
-| 硬编 | 平台硬编默认开启(mf/qsv/amf/nvenc/vaapi/videotoolbox), 软编 x264/x265 | `src/avox_ffmpeg/encoder/FFVEncoder.cpp:196,393` |
+| 输出参数面 | quality/cbr/vbr/gop/profile/分辨率(setVideoDesc)/音频重采样 | `src/avox/AvoxMuxer.h:132-196` |
+| 硬编 | 平台硬编可用(mf/qsv/amf/nvenc/vaapi/videotoolbox), 软编 x264/x265；产品默认软编, 硬编需显式开启 | `src/avox_ffmpeg/encoder/FFVEncoder.cpp:196,393` |
 | 无损 remux | StreamRecorder(createRecorder(false)) | `src/avox/muxer/StreamRecorder.hpp` |
 | 轨级直拷(换/抽音轨不重编) | TransMode AudioCopy/VideoCopy | `src/avox/AvoxMuxer.h:219-228` |
-| 提取音频 | AudioTap + FFResample + WavSave + AAC; mp3 待补 | `src/avox/audio/AudioTap.hpp` 等 |
+| 提取音频 | AudioTap + FFResample + WavSave + AAC/MP3 | `src/avox/audio/AudioTap.hpp` 等 |
 | 本地字幕生成 | AudioStt(sherpa-onnx SenseVoice)→SubtitleAsr | `src/avox/audio/AudioStt.cpp`; `src/avox/subtitle/SubtitleAsr.hpp` |
+| 内嵌字幕提取 | SubtitleExport: 解文本字幕包→SRT(ASS/SubRip 字段归一) | `src/avox/subtitle/SubtitleExport.cpp` |
+| 识别生成字幕 | IAudioStt + Recorder AudioTap → ISrtWriter | `plugins/avox_sherpa`; `src/avox/audio/AudioStt.cpp` |
 | 图片去水印 | IWatermarkRemoval: 自动检测 / 框选 region / mask 修复; LaMa·AOT-GAN·分块; GPU | `plugins/avox_cv/inpaint/`; 用法见 `src/avox_cmd/doc/doc_inpaint.md` |
 | 抽帧/封面 | screenShot → JPEG/PNG/BMP/TGA | `src/avox/video/ImageIO.cpp:131` |
-| 硬编探测 | 真编 3 帧验证(panvox 有先例 `pvx_encoder_probe`, 本仓重写) | 思路见 panvox_c_api.h:607(仅参考) |
+| 硬编探测 | 编码器注册检查；真编验证未实现 | 本仓 `ak_encoder_probe` |
 | 文件探测 | IoPlan/白名单按 probe 打开 | `src/avox_ffmpeg/IOParseFF.cpp` |
+
+### 4.0.1 参考帧抓取(2026-10-28)
+
+- `ak_media_frames` 一次打开文件, 对每个请求时间 `av_seek_frame(BACKWARD)` 到
+  关键帧, 向后解码到该时刻, 返回**实际帧时间**(不假装精确到请求值)。
+- 缩放直接在解码后的 YUV 平面上采样: Y 双线性、UV 最近邻, 按
+  `AVPixFmtDescriptor` 的 plane/step/shift/depth 取分量(8/10/12bit、420/422/444、
+  nv12/p010); 不生成全尺寸 RGBA 中间图, 4K 也只要目标尺寸的缓冲。
+- 按流的 display matrix 旋转 90/180/270(手机竖拍); 色彩矩阵按
+  `colorspace` + `color_range`(BT.601/709/2020, full/limited), 未标注时按
+  >576 行猜 709。
+- 编码走 avox `getImageBase64`(stb JPEG), 返回 base64; Dart 在 isolate 里调用。
+- 无视频轨/不支持的像素格式返回 `frames:[]` + `reason`, 时间线退化为波形刻度。
+
+### 4.1 字幕任务(2026-10-27)
+
+- `kind=subtitle`: `params.subtitle.mode = auto|embedded|asr`;
+  `stream_index` 用 probe 返回的容器 stream index; `allow_asr` 只在 `auto`
+  没有文本轨时决定是否兜底。
+- **内嵌**: `avox::exportSubtitleTrack` 解文本字幕包
+  (SubRip/ASS/SSA/mov_text/WebVTT 等)写 SRT; PGS/DVD/DVB 位图返回 -3,
+  UI 引导改用语音识别。SRT 写出走 `avox::ISrtWriter` 虚接口, 不跨 ABI
+  传结构体数组。
+- **识别**: TranscodeRecorder(video=none, audio=16k mono AAC 旁路) +
+  AudioTap(16k/mono/S16) → `IAudioStt`(sherpa, offline) → `ISrtWriter`;
+  音频旁路产物完成后删除, 只留 SRT。
+- **模型**: 不随包。Dart `ModelStore` 在用户真正点识别时才下载
+  SenseVoice + Silero VAD 到 `<app support>/models/stt/sense-voice/`,
+  校验 sha256; `ak_init.models_dir` → `avox::setModelsRoot`。
+- **插件**: `avox_sherpa.dll + sherpa-onnx-c-api.dll + onnxruntime.dll`
+  随包放 `plugins/`; 模型目录不随包。
 
 ## 5. 引擎缺口清单(**全部归 avox 仓做**, 本仓只挂依赖)
 
@@ -144,7 +218,9 @@ kind 集合 = `transcode | remux | extract_audio | asr | trim | burn_sub | image
    avox 仓源码与其编译脚本零改动。
 2. **无损剪切成品 API**(M4): 关键帧对齐区间导出; 零件=StreamRecorder 的
    seek+remux。顺带**无损合并**(全仓现无 concat 实现)。
-3. **字幕轨导出**(M3 后): SrtParser 补写出(SrtParser.hpp:13-19 只有 parse)。
+3. ~~**字幕轨导出**~~(本仓已解决): avox 新增 `AvoxSubtitle.h`
+   (`exportSubtitleTrack` / `ISrtWriter` / `isTextSubtitleCodec`), 文本轨
+   可导出 SRT; 位图字幕不做 OCR。
 4. **离线字幕烧录**(M5 后): TranscodeRecorder 挂字幕模块(渲染三层已齐:
    libass 插件 + FreeType + PGS 解码, 差接线)。
 5. (后置) GIF/WebP 编码器; 旋转/裁剪的录制链开关(VkTransposeLayer/
@@ -153,10 +229,11 @@ kind 集合 = `transcode | remux | extract_audio | asr | trim | burn_sub | image
 注意: ffmpeg 显式禁了 avfilter/swscale(`build_ffmpeg.py:61-62`), 不能借
 filtergraph 补能力——上述都走引擎自有链。
 
-**图片去水印不是引擎缺口**: `avox_cv` 的 IWatermarkRemoval 已现成
-(detect / region / mask / GPU, LaMa·AOT-GAN·Tiled)。本仓缺的只是
-`ak_*` 暴露(kind `image_inpaint`)与 onnx 模型分发口径(与字幕模型同机制)。
-视频去水印走同一能力逐帧处理, 慢, 后置。
+**图片去水印已落地**(2026-10-29): `avox_cv` 的 IWatermarkRemoval 现成
+(detect / region / mask, LaMa·AOT-GAN·Tiled)。本仓通过 kind `image` 暴露,
+手绘 mask 由 Flutter 生成 PNG、`ak_image_detect` 供自动识别预览; 模型按需
+下载(LaMa + YOLO26-Seg, 约 290MB)。avox 补了 `createWatermarkRemoval()`
+公共导出, 本仓不绕过公共头。视频去水印走同一能力逐帧处理, 慢, 后置。
 
 ## 6. 构建配方
 
@@ -174,25 +251,19 @@ filtergraph 补能力——上述都走引擎自有链。
 - **avox 库**: CMake 开关 `AVOX_ENABLE_FFMPEG/CLI/PLUGINS...`
   (avox `CMakeLists.txt:201-218`); 工具链路不需要播放呈现层, CLI 开关
   可关, avox_sherpa 插件必开。首次链接(M1)时钉下具体 target 清单。
-- **shim**: `native/avtool/`(C++17), 三端各一薄层 + 共享 `avtool_core`;
-  产物 `avoxkit_native`; Dart 侧 `lib/native/` 用 ffi 生成式绑定手写
-  (任务面小, 不上 ffigen)。
-- **Flutter**: SDK 在 `D:/Work/flutter`; `flutter run --release` 为默认
-  运行口径(与 panvox 同纪律)。
+- **shim**: `native/avtool/`(C++17), 当前只有 Windows 实现; 产物
+  `avoxkit_native`; Dart 侧 `lib/native/` 用 ffi 生成式绑定手写
+  (任务面小, 不上 ffigen)。macOS 移植见 `docs/macos-porting.md`。
+- **Flutter**: 使用本机安装的 Flutter SDK（不在 PATH 时显式指定路径）；
+  `flutter run --release` 为默认运行口径。
 
-## 7. 里程碑
+## 7. 当前状态
 
-| 里程碑 | 内容 | 依赖 |
-|---|---|---|
-| M0(本提交) | 仓骨架: 壳 + 架构 + ABI 草案 + README/AGENTS | — |
-| M1 | avox 链接打通; 第一条 transcode 任务(本地文件→输出, 进度/取消)全链跑通; 队列 v0(并发 1); NAS 路径天然支持 | Windows 先行 |
-| M2 | remux + 提取音频; URL 直链输入(直链/m3u8/rtsp/rtmp) | 本仓 ffmpeg kit |
-| M3 | 本地字幕生成(avox_sherpa + 模型分发口径: 首用下载/便携包) | avox_sherpa |
-| M3.5 | 图片工具 v0: 去水印(自动检测/框选/mask); 模型分发复用 M3 机制 | avox_cv(现成) |
-| M4 | 无损剪切 + 批量队列成形 | avox#2 |
-| M5 | 三端打包(安装/便携) + 落地页 + Show HN(归 panvox-site) | avox#3–4 后置 |
+- 已完成: 单文件/文件夹转换、封装、提取音频、提取字幕（内嵌 + 本地识别）、
+  片段截取、任务队列、Windows 原生预览。
+- 未完成: 无损剪切/合并、URL 输入、图片工具、字幕翻译/烧录、三端打包。
+- 用户功能与边界以 `docs/features.md` 为准；本文其余章节描述技术分层与后续扩展。
 
-## 8. 引流闭环(产品层, 不进代码逻辑)
+## 8. 关于页
 
-工具内唯一出口: 「关于」页 Powered by avox(GitHub 链接) + Panvox 推荐位;
-不做弹窗不做常驻横幅。落地页/发文/Show HN 稿全部归 panvox-site 仓运营。
+只展示产品事实、开源引擎署名和版本信息；不做弹窗或常驻推广。

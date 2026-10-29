@@ -1,45 +1,47 @@
 # Avoxkit
 
-> Free, local, private — an audio & video toolbox for everyone, not for editors.
-> Powered by [avox](https://github.com/xxxzhou/avox), our open-source media engine.
+**English | [简体中文](README.zh-CN.md)**
 
-- **Free** — every feature, no watermark, no membership tiers.
-- **Local** — your files never leave your machine. No uploads, ever.
-- **No account** — no sign-up, no sign-in, no tracking, no ads.
+Avoxkit is a desktop audio/video toolbox: convert, trim, extract audio and subtitles, and remove watermarks from images, with one queue for single files or whole folders.
 
-## What it does (planned first release)
+> Flutter · Windows x64 · AGPLv3 · v0.1.0
 
-1. **Convert** — HEVC → H.264 and one-click presets (Bilibili / Douyin / WeChat / Discord…); a single file or a whole folder.
-2. **Compress** — shrink a video to a target size (e.g. 10 MB for chat apps).
-3. **Remux & extract audio** — lossless MKV ↔ MP4 container swap; export MP3 / M4A; folders supported.
-4. **Subtitles** — generate SRT from speech, fully offline (nothing uploaded to any cloud).
-5. **Lossless trim** — cut the head/tail without re-encoding.
-6. **Image cleanup** — remove watermarks or logos from photos, fully offline.
+[![Platform](https://img.shields.io/badge/Platform-Windows%20x64-blue)]()
+[![License](https://img.shields.io/badge/License-AGPL_v3-important)](LICENSE)
+[![Version](https://img.shields.io/badge/Version-0.1.0-green)]()
 
-Later: subtitle extraction & hard-burn, frame grabs / GIF, AI enhancement…
+- **Free** — every feature is free; no subscription, no watermark.
+- **Local** — media files are processed on this machine and never uploaded.
+- **No account** — no sign-up, no sign-in, no usage data collected.
 
-## Status
+## What it does
 
-🚧 Under active development — nothing to download yet. See
-[docs/architecture.md](docs/architecture.md) for the technical plan.
+Avoxkit is built for everyday audio/video work, not for editing. The current release offers:
 
-## Platforms
+| Feature | What it does |
+|---|---|
+| **Convert** | Change container, video codec, resolution or audio codec. When only the container changes and the target supports the source codecs, the file is remuxed instead of re-encoded. Single files and whole folders. |
+| **Trim** | Pick a start and end point on a thumbnail, waveform and keyframe timeline, then save that segment. The clip is re-encoded, not losslessly cut. |
+| **Extract audio** | Export M4A or MP3; for a single file you can also export the original audio track untouched. Single files and folders. |
+| **Extract subtitles** | Export embedded text subtitles as SRT. When there is none, generate them with on-device speech recognition — nothing is uploaded. |
+| **Image repair** | Remove watermarks, station logos and overlays from images. Detect them automatically or paint the area by hand; a local LaMa model fills in the background. Single images and folders. |
+| **Tasks & batches** | One queue with progress and cancellation; a batch can be cancelled as a group and its failed items retried. On Windows, watch the picture or audio envelope while a job runs. |
 
-Windows · macOS · Linux (desktop first).
+Detailed behavior and output settings: **[docs/features.md](docs/features.md)** (currently in Chinese). Other technical documents are indexed in [docs/README.md](docs/README.md).
 
-## License & credits
+## Current release
 
-Avoxkit is licensed under **AGPL-3.0**, same as the
-[avox](https://github.com/xxxzhou/avox) engine it is built on.
-Built with FFmpeg (GPL build, with x264/x265/libmp3lame) and
-[sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) for offline speech recognition.
+- Version: 0.1.0
+- Platform: Windows 64-bit desktop
+- Status: under active development
 
-Looking for a player instead? Try our sister product
-**Panvox** — a cross-platform video player with AI subtitle translation.
+## Build
 
----
+- Native layer: [native/avtool/README.md](native/avtool/README.md).
+- Windows packaging script: `script/build_windows.ps1`.
 
-中文说明:Avoxkit 是一款面向普通人的免费音视频工具箱——格式转换、压缩、提取音频、
-本地生成字幕、无损剪切、图片去水印。全部功能免费、无水印、不需要账号;所有处理都在你自己的
-电脑上完成,文件不会被上传到任何服务器。技术底座是开源引擎
-[avox](https://github.com/xxxzhou/avox)(AGPL-3.0)。项目开发中,敬请期待。
+## Built with
+
+The UI is built with Flutter. Media processing is done by the open-source engine [avox](https://github.com/xxxzhou/avox). The runtime uses an FFmpeg GPL build with x264, x265 and libmp3lame; speech recognition uses sherpa-onnx with SenseVoice (Apache-2.0) and Silero VAD (MIT); image repair uses LaMa and a YOLO26-Seg watermark model, downloaded on demand.
+
+Released under **AGPL-3.0**.

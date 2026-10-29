@@ -1,5 +1,8 @@
 # M1 开工方案(落地执行, 2026-10-26)
 
+> **历史文档（2026-10-26）**：本文是 M1 当时的实测与落地记录，部分结论后来已
+> 变化。当前用户功能与边界以 `docs/features.md` 为准；保留本文仅用于追溯设计过程。
+
 > 承接 `docs/m1-plan.md`。那份是设计口径; 本文只写"怎么开工": 本次实测校正、
 > 构建门、代码骨架、线程/取消语义、验收顺序。两边冲突时以本文的实测事实为准,
 > 并把结论回写 `m1-plan.md`。
@@ -15,7 +18,7 @@
 
 | 项 | 结果 |
 |---|---|
-| 工具链 | cmake 4.0.0-rc4; VS 2022 Community (MSBuild 17.14); Flutter 3.47.4 (`D:/Work/flutter`) |
+| 工具链 | cmake 4.0.0-rc4; VS 2022 Community (MSBuild 17.14); Flutter 3.47.4 (`<flutter-sdk>`) |
 | avox 配置 | 用 m1-plan §6 的开关 + `AVOX_ENABLE_AGENT=OFF`, configure 5 秒通过, 安装目录 `avox/build-avoxkit/install/AMD64` |
 | avox 编译 | **失败**, 两个错误(见 §1.1), 与 avoxkit 代码无关 |
 | ffmpeg 版本 | kit 与 avox 3rdparty 同为 9.0.1: avcodec 63 / avformat 63 / avutil 61 / swresample 7 |
@@ -23,12 +26,12 @@
 | kit 编码器白名单 | `h264_mf,hevc_mf,aac,libx264,libx265,libmp3lame`; **没有** qsv/amf/nvenc |
 | avox 初始化 | Windows 下 `DllMain(DLL_PROCESS_ATTACH)` 自动 `AvoxManager::Get().init()`; DETACH 自动 `clean()` |
 | 公开头 | 安装到 `install/include/avox/*.h`; `AvoxManager.hpp` **不在**公开头里(也不需要) |
-| 音频码率 | avox 工作区已有未提交的 `setAudioEncodeParam(AudioEncodeParam)`: `bitrateKbps/vbrQuality/profile` |
+| 音频码率 | avox 已提供 `setAudioEncodeParam(AudioEncodeParam)`: `bitrateKbps/vbrQuality/profile` |
 | close 语义 | `close()` 立即把状态置 `completed`(failed 除外), 排空后才回调 `onComplete`; 失败不回调 `onComplete` |
 | 硬编开关 | `IRecorder` 没有 `setHardEncode`; 走 `getOption()->setBool("rec.hard.encode", ...)` |
 | 递归所有权 | `createRecorder()` 内部 `new`, 调用方 `removeRecorderOb` 后 `delete` |
 | 探测 | `getSourceInfo()/getDuration()` 要 `open()` 后才有效; 预探测在本仓用 libavformat 实现 |
-| 测试工具 | 系统 `ffmpeg/ffprobe` 可用; 测试素材可用 `avox/assets/video/*` 或现生成 |
+| 测试工具 | 系统 `ffmpeg/ffprobe` 可用; 测试素材可用 `<avox-repo>/assets/video/*` 或现生成 |
 
 ## 1. 开工前置 P0(约半天)
 
@@ -83,7 +86,7 @@ IRtcEventOb* createZlTestSdpAgent(IRtcPlayer* player, const char* serverUrl) {
 ### 1.2 更新后的构建命令
 
 ```bash
-cd D:/Work/github/avox
+cd <avox-repo>
 cmake -S . -B build-avoxkit -G "Visual Studio 17 2022" -A x64 \
   -DAVOX_DIST_FLAVOR=agpl \
   -DAVOX_ENABLE_FDKAAC=OFF -DAVOX_ENABLE_FAAC=OFF \
@@ -99,8 +102,8 @@ cmake --build build-avoxkit --config Release --target avox --parallel 8
   FFmpeg 体系里 FAAC 的 nonfree 争议。AAC 编码走 kit 的原生 `aac`。
 - 产物: `build-avoxkit/install/AMD64/avox.dll` + `avox.lib`;
   公开头 `build-avoxkit/install/include/avox/`。
-- avox 工作区当前有音频编码参数改动(未提交)。shim 用同一次构建装出的头,
-  不会错位; 但要记录 `git rev-parse HEAD` + 说明工作区脏, 避免下次换机器复现不了。
+- avox 侧已提供音频编码参数改动。shim 用同一次构建装出的头, 不会错位;
+  记录 `git rev-parse HEAD` 与构建环境, 避免换机器无法复现。
 
 ### 1.3 门 G0
 
@@ -284,8 +287,9 @@ delete rec;
   其余工具页 M2 再进, 遵守 docs/ui.md 的 registry 扩展方式。
 - DLL 部署: `windows/CMakeLists.txt` 加 post-build copy, 把
   `avoxkit_native.dll / avox.dll / kit 的 avcodec-63 等 + libmp3lame/x264/x265/
-  zlib1/libwinpthread` 拷到 `$<TARGET_FILE_DIR:${BINARY_NAME}>`;
-  **不要**拷 avox 3rdparty 的 ffmpeg。
+  zlib1/libwinpthread/libgcc_s_seh-1` 拷到 `$<TARGET_FILE_DIR:${BINARY_NAME}>`;
+  **不要**拷 avox 3rdparty 的 ffmpeg。kit 的 x264/x265 走 libstdc++,
+  缺 `libgcc_s_seh-1.dll` 时只有带 mingw64 PATH 的进程能启动, 普通双击报 126。
 
 门 G4: `flutter run --release` 启动, 选文件→提交→进度→完成; 队列页状态正确;
 关闭窗口无崩溃/无残留进程。
@@ -315,8 +319,7 @@ delete rec;
 
 ## 8. 还缺的决定(默认值已选, 可改)
 
-1. avox 工作区的音频参数改动: **先在 avox 仓提交**, 再按提交号构建
-   (默认; 否则每次构建都依赖脏工作区)。
+1. avox 侧音频参数改动: 按提交号构建, 避免依赖本地工作区。
 2. M1 是否带拖拽: **带**(desktop_drop 已在缓存), 但文件选择器是必选路径。
 3. 取消后的 `.part`: **删除**(默认)。
 4. 失败自动重试: **不自动**(默认), 只提供手动重试。
@@ -325,7 +328,7 @@ delete rec;
 
 ## 9. 本次落地进展(2026-10-26)
 
-- **avox 编译门已补**(avox 仓, 未提交): `src/avox/player/RtcPlayerApi.cpp` 加
+- **avox 编译门已补**(avox 仓): `src/avox/player/RtcPlayerApi.cpp` 加
   `AVOX_ENABLE_ZLMEDIAKIT` guard; `src/avox_cmd/commands/CmdPlay.cpp` 的 `case 'I'`
   加 `AVOX_ENABLE_FREETYPE` guard。音频编码参数已在 avox `4954d5e` 提交。
 - **avox 构建通过**: `build-avoxkit/install/AMD64/Release/avox.dll + avox.lib`;
@@ -338,7 +341,7 @@ delete rec;
   - `version`: ABI 1.0, avox 1.0.0970/4954d5e, ffmpeg 9.0.1, `libmp3lame=true`;
   - `init`: 自检通过, 日志落到 `<work_dir>/logs/avoxkit-YYYYMMDD.log`;
   - `caps`: h264/hevc 软硬编、aac/mp3、mp4/matroska、协议列表与 features;
-  - `probe`: 对 `avox/assets/video/avox_electron.mp4` 返回 hevc 1392x880@30、
+  - `probe`: 对 `<avox-repo>/assets/video/avox_electron.mp4` 返回 hevc 1392x880@30、
     83.4s、can_seek=true。
 - **实现期踩坑**:
   1. `init` 里持 `engine().mtx` 再调 `make_version_json()` 会二次锁同一把
@@ -413,5 +416,55 @@ delete rec;
 - **测试**: `flutter test` 12 项(自然排序、递归/非递归、过滤、截断、三种命名
   策略、跳过已存在); UI 实测提取音频批量: 4 个视频 → 4 个 m4a, 组卡显示
   完成/失败/跳过。
+
+## 12. M3: 字幕提取 + 本地识别(2026-10-27)
+
+- **两个来源**: 有内嵌文本字幕轨(SubRip/ASS/SSA/mov_text/WebVTT)直接导出
+  SRT; 没有时用本地 sherpa SenseVoice 识别生成。PGS/DVD/DVB 位图字幕不做
+  OCR, UI 引导改用识别。
+- **avox 新增**: `src/avox/AvoxSubtitle.h` + `src/avox/subtitle/SubtitleExport.cpp`
+  (`exportSubtitleTrack` / `ISrtWriter` / `isTextSubtitleCodec`)。SRT 写出走
+  虚接口, 不跨 ABI 传结构体/裸指针。
+- **shim**: `kind=subtitle`; `params.subtitle.mode=auto|embedded|asr`,
+  `stream_index` 用 probe 的 container stream index。识别链 =
+  TranscodeRecorder(仅音频 16k mono AAC 旁路) + AudioTap → `IAudioStt`
+  (offline SenseVoice) → 写 SRT; 旁路音频完成后删除。
+- **构建 avox**(与 M1 相同目录, 追加插件开关):
+  ```bash
+  cmake -S . -B build-avoxkit -G "Visual Studio 17 2022" -A x64 \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DAVOX_DIST_FLAVOR=agpl -DAVOX_ENABLE_FDKAAC=OFF -DAVOX_ENABLE_FAAC=OFF \
+    -DAVOX_ENABLE_WEBRTC=OFF -DAVOX_ENABLE_ZLMEDIAKIT=OFF \
+    -DAVOX_ENABLE_SWIG=OFF -DAVOX_ENABLE_GODOT=OFF -DAVOX_ENABLE_UNITY=OFF \
+    -DAVOX_ENABLE_CLI=OFF -DAVOX_ENABLE_SAMPLES=OFF -DAVOX_ENABLE_AGENT=OFF \
+    -DAVOX_ENABLE_FREETYPE=OFF -DAVOX_ENABLE_PLUGINS=ON \
+    -DAVOX_ENABLE_SHERPA=ON -DAVOX_ENABLE_ONNX=ON \
+    -DAVOX_ENABLE_OPENCV=ON -DAVOX_ENABLE_TRANSLATION=OFF \
+    -DAVOX_ENABLE_CV=ON -DAVOX_ENABLE_OCR=OFF -DAVOX_ENABLE_OPENVINO=OFF \
+    -DAVOX_ENABLE_AVATAR=OFF -DAVOX_ENABLE_TORRENT=OFF \
+    -DAVOX_ENABLE_CALIB=OFF -DAVOX_ENABLE_FBX=OFF -DAVOX_ENABLE_ASS=OFF \
+    -DAVOX_ENABLE_TEMPO=OFF -DAVOX_ENABLE_DISC=OFF -DAVOX_ENABLE_DECKLINK=OFF
+  cmake --build build-avoxkit --config Release \
+    --target avox avox_sherpa avox_onnx avox_opencv avox_cv --parallel 8
+  ```
+  `CMAKE_BUILD_TYPE=Release` 是必须的: VS 多配置生成器默认空值,
+  `FindSherpaOnnx` 会去 `sherpa-onnx/lib/` 找不到 `Release` 库。
+- **打包**: `avox_sherpa.dll + sherpa-onnx-c-api.dll + sherpa-onnx-cxx-api.dll`
+  从 `install/AMD64/Release/plugins/` 复制到 shim 的 `plugins/`; 再从
+  `avox/build/windows/sherpa-onnx/bin/Release/onnxruntime.dll` 补 CPU 版 ORT。
+  图像修复另带 `avox_cv.dll + avox_onnx.dll + avox_opencv.dll +
+  opencv_world4130.dll`（同一 plugins 目录）。ORT 与 opencv 都放 `plugins/`，
+  由 avox 的插件加载器把它加入 DLL 搜索路径。模型**不打包**。
+- **图像修复的引擎入口**: 公共头原本只有 `IWatermarkRemoval` 接口、没有创建函数
+  （只能经未安装的 `AvoxManager` 拿）。2026-10-29 在 avox `src/avox/vision/Vision.cpp`
+  补了 `createWatermarkRemoval()` 导出，本仓按公共头调用，不 include 私有
+  `AvoxManager.hpp`。
+- **模型按需下载**: `lib/core/model_store.dart` 在用户点识别且模型缺失时下载
+  SenseVoice + Silero VAD 到 `<app support>/models`, sha256 校验; 只下三个
+  文件(约 230 MB), 不用识别就不下载。图像修复同理, 首次使用时下载
+  `inpaint/lama_base.onnx` + `inpaint/yolo26m-seg_watermark.onnx`（约 290 MB）。
+- **测试**: `flutter test` 53 项; `ak_subtitle_test` 9 checks;
+  `ak_features_test` 131 checks。ASR 实测 `<avox-repo>/assets/video/sherpa.mp4`
+  → 12 条中/日文字幕。
 
 

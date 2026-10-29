@@ -1,5 +1,9 @@
 # M1 编码方案(Windows 先行, 2026-10-26)
 
+> **历史文档（2026-10-26）**：本文是 M1 当时的实现口径，部分决策后来已调整
+> （如硬编默认值、音频码率、预览与批量）。当前用户功能与边界以
+> `docs/features.md` 为准；保留本文仅用于追溯设计过程。
+
 > 目标: avox 链接打通, 跑通第一条 `transcode` 全链(提交→进度→取消→完成),
 > 建立队列 v0 与 `ak_*` shim 的最小冻结面。本文是实现口径, 架构背景见
 > `docs/architecture.md`。
@@ -83,8 +87,8 @@ void        ak_free_string(const char* s);         // shim 分配, shim 释放
 
 ```json
 {"kind":"transcode",
- "source":{"kind":"file","uri":"C:/x/a.mkv"},
- "output":"C:/x/a.mp4",
+ "source":{"kind":"file","uri":"C:/media/input.mkv"},
+ "output":"C:/media/output.mp4",
  "video":{"codec":"h264","hardware":"off","rate_mode":"quality",
           "quality":60,"bitrate_kbps":0,"resolution":"source","fps":0},
  "audio":{"codec":"aac"},
@@ -98,7 +102,7 @@ void        ak_free_string(const char* s);         // shim 分配, shim 释放
 {"type":"state","task_id":1,"state":"running","stage":"opening"}
 {"type":"progress","task_id":1,"current_ms":1200,"total_ms":60000,"pct":2.0}
 {"type":"error","task_id":1,"code":"input_open_failed","stage":"open","message":"..."}
-{"type":"done","task_id":1,"output":"C:/x/a.mp4","duration_ms":60000}
+{"type":"done","task_id":1,"output":"C:/media/output.mp4","duration_ms":60000}
 ```
 
 错误码: `bad_json / bad_source / unsupported_kind / output_not_writable /
