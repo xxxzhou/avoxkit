@@ -48,4 +48,22 @@ if(EXISTS "${AVOXKIT_NATIVE_BIN}/avoxkit_native.dll")
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
             ${AVOXKIT_RUNTIME_DLLS} "$<TARGET_FILE_DIR:${BINARY_NAME}>"
     COMMENT "Copy avoxkit native runtime DLLs")
+  if(EXISTS "${AVOXKIT_NATIVE_BIN}/plugins")
+    add_custom_command(TARGET ${BINARY_NAME} POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy_directory
+              "${AVOXKIT_NATIVE_BIN}/plugins"
+              "$<TARGET_FILE_DIR:${BINARY_NAME}>/plugins"
+      COMMENT "Copy avox speech plugin")
+  endif()
+endif()
+
+# avox 渲染着色器: VK 管线按 exe 同目录 assets/glsl 加载, 缺了转码渲染静默残废
+set(AVOX_ASSETS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../../avox/build-avoxkit/install/AMD64/assets")
+if(EXISTS "${AVOX_ASSETS_DIR}/glsl")
+  add_custom_command(TARGET ${BINARY_NAME} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${AVOX_ASSETS_DIR}/glsl" "$<TARGET_FILE_DIR:${BINARY_NAME}>/assets/glsl"
+    COMMENT "Copy avox glsl shaders")
+  install(DIRECTORY "${AVOX_ASSETS_DIR}/glsl"
+          DESTINATION "${INSTALL_BUNDLE_LIB_DIR}/assets")
 endif()

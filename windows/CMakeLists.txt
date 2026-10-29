@@ -111,9 +111,13 @@ install(FILES "${AOT_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}"
 # Build native/avtool first; see native/avtool/README.md.
 set(AVOXKIT_NATIVE_BIN "${CMAKE_CURRENT_SOURCE_DIR}/../native/avtool/build/bin/Release")
 if(EXISTS "${AVOXKIT_NATIVE_BIN}/avoxkit_native.dll")
-  file(GLOB AVOXKIT_RUNTIME_DLLS "${AVOXKIT_NATIVE_BIN}/*.dll")
+  file(GLOB AVOXKIT_RUNTIME_DLLS CONFIGURE_DEPENDS "${AVOXKIT_NATIVE_BIN}/*.dll")
   install(FILES ${AVOXKIT_RUNTIME_DLLS}
     DESTINATION "${INSTALL_BUNDLE_LIB_DIR}" COMPONENT Runtime)
+  if(EXISTS "${AVOXKIT_NATIVE_BIN}/plugins")
+    install(DIRECTORY "${AVOXKIT_NATIVE_BIN}/plugins"
+      DESTINATION "${INSTALL_BUNDLE_LIB_DIR}" COMPONENT Runtime)
+  endif()
 else()
   message(WARNING
     "avoxkit_native.dll not found at ${AVOXKIT_NATIVE_BIN}; "

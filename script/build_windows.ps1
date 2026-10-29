@@ -8,10 +8,31 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
+# x264/x265 经 libstdc++ 依赖 MinGW 的 libgcc; 缺它时只有 PATH 里带 mingw64
+# 的环境能启动, 普通双击报 error 126。kit 不完整时从 MSYS2 补齐。
+$kitBin = Join-Path $root "third_party/ffmpeg/kit/bin"
+$libgcc = Join-Path $kitBin "libgcc_s_seh-1.dll"
+if (-not (Test-Path $libgcc)) {
+  $msys = $env:MSYS2_INSTALL_DIR
+  if (-not $msys) { $msys = "C:\msys64" }
+  $candidate = Join-Path $msys "mingw64/bin/libgcc_s_seh-1.dll"
+  if (-not (Test-Path $candidate)) {
+    throw "ffmpeg kit 缺 libgcc_s_seh-1.dll, 且 $candidate 不存在"
+  }
+  Copy-Item $candidate $libgcc
+  Write-Host "copied libgcc_s_seh-1.dll from $candidate"
+}
+
 if (-not (Test-Path $Flutter)) {
   $cmd = Get-Command flutter -ErrorAction SilentlyContinue
   if (-not $cmd) { throw "flutter not found; pass -Flutter <path>" }
   $Flutter = $cmd.Source
+}
+# 无扩展名的 flutter 是 bash 启动器: PowerShell 会交给 ShellExecute 立即返回,
+# 打包时拿到的是旧 app.so; 一律走 .bat 才能同步等待并拿到退出码
+if ([IO.Path]::GetExtension($Flutter) -ne ".bat" -and
+    (Test-Path "$Flutter.bat")) {
+  $Flutter = "$Flutter.bat"
 }
 
 cmake -S native/avtool -B native/avtool/build -G "Visual Studio 17 2022" -A x64
@@ -33,17 +54,44 @@ if ($running) {
   throw "avoxkit.exe is running; close it before packaging"
 }
 
-if (Test-Path $Dist) { Remove-Item -Recurse -Force $Dist -ErrorAction Stop }
-New-Item -ItemType Directory -Force -Path $Dist | Out-Null
-Copy-Item (Join-Path $src "*") $Dist -Recurse -Force -ErrorAction Stop
+# 先拷到临时目录再整体换入: 直接删 dist 重建时, 用户在窗口期启动会
+# 撞上 "avoxkit_native.dll not found" (error 126)
+$distPath = [IO.Path]::GetFullPath((Join-Path $root $Dist))
+$staging = "$distPath.staging-" + [guid]::NewGuid().ToString("N")
+New-Item -ItemType Directory -Force -Path $staging | Out-Null
+# robocopy 比 Copy-Item 稳: 目录/锁文件竞态下不会静默留下旧 DLL
+& robocopy $src $staging /E /COPY:DAT /R:2 /W:1 /NFL /NDL /NJH /NJS | Out-Null
+if ($LASTEXITCODE -ge 8) { throw "robocopy failed: $LASTEXITCODE" }
 
-# 锁文件/竞态会让 Copy-Item 留下旧产物; 时间戳不一致直接失败
-$srcSo = Join-Path $src "data/app.so"
-$distSo = Join-Path $Dist "data/app.so"
-if (-not (Test-Path $distSo)) { throw "dist is missing data/app.so" }
-if ((Get-Item $distSo).LastWriteTime -lt (Get-Item $srcSo).LastWriteTime) {
-  throw "dist app.so is stale; close avoxkit and rebuild"
+# 锁文件/竞态会让复制留下旧产物; 关键文件时间戳不一致直接失败
+$required = @(
+  "avoxkit.exe",
+  "avoxkit_native.dll",
+  "avox.dll",
+  "libgcc_s_seh-1.dll",
+  "plugins\avox_sherpa.dll",
+  "plugins\sherpa-onnx-c-api.dll",
+  "plugins\onnxruntime.dll",
+  "plugins\avox_cv.dll",
+  "plugins\avox_onnx.dll",
+  "plugins\avox_opencv.dll",
+  "plugins\opencv_world4130.dll",
+  "data\app.so"
+)
+foreach ($name in $required) {
+  $srcFile = Join-Path $src $name
+  $distFile = Join-Path $staging $name
+  if (-not (Test-Path $distFile)) { throw "package is missing $name" }
+  if ((Get-Item $distFile).LastWriteTime -lt (Get-Item $srcFile).LastWriteTime) {
+    throw "package $name is stale; close avoxkit and rebuild"
+  }
+  $srcHash = (Get-FileHash $srcFile -Algorithm SHA256).Hash
+  $distHash = (Get-FileHash $distFile -Algorithm SHA256).Hash
+  if ($srcHash -ne $distHash) { throw "package $name hash mismatch" }
 }
+
+if (Test-Path $distPath) { Remove-Item -Recurse -Force $distPath -ErrorAction Stop }
+Move-Item -Path $staging -Destination $distPath -ErrorAction Stop
 
 Write-Host ""
 Write-Host "portable build: $Dist"

@@ -81,6 +81,16 @@ const char* error_name(int32_t code) {
       return "task_not_running";
     case AK_E_NOT_IMPLEMENTED:
       return "not_implemented";
+    case AK_E_MODEL_MISSING:
+      return "model_missing";
+    case AK_E_NO_SUBTITLE:
+      return "no_subtitle";
+    case AK_E_STT_UNAVAILABLE:
+      return "stt_unavailable";
+    case AK_E_INPAINT_UNAVAILABLE:
+      return "inpaint_unavailable";
+    case AK_E_INPAINT_FAILED:
+      return "inpaint_failed";
     default:
       return "internal";
   }

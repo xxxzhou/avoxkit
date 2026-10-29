@@ -4,6 +4,7 @@
 #include <atomic>
 #include <cctype>
 #include <chrono>
+#include <cmath>
 #include <condition_variable>
 #include <deque>
 #include <filesystem>
@@ -12,12 +13,18 @@
 #include <string>
 #include <thread>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include <nlohmann/json.hpp>
 
+#include "ak_preview.hpp"
+#include "avox/Avox.hpp"
+#include "avox/AvoxAudio.h"
 #include "avox/AvoxBase.h"
+#include "avox/AvoxLayer.h"
 #include "avox/AvoxMuxer.h"
+#include "avox/AvoxSubtitle.h"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -42,6 +49,152 @@ std::atomic<uint64_t> g_event_seq{0};
 
 uint64_t next_seq() { return ++g_event_seq; }
 
+// 波形峰值: tap 线程只做降采样, 每 5 个 100ms 块批量投一次事件
+class WaveTap : public IAudioTapOb {
+ public:
+  WaveTap(int64_t task_id, int64_t run_id, std::string group_id,
+          std::string kind, std::atomic<int64_t>* decoded_ms,
+          std::atomic<int64_t>* decoded_base_ms)
+      : task_id_(task_id),
+        run_id_(run_id),
+        group_id_(std::move(group_id)),
+        kind_(std::move(kind)),
+        decoded_ms_(decoded_ms),
+        decoded_base_ms_(decoded_base_ms) {}
+
+  void onFrame(const AvoxData& raw, int64_t pts) override {
+    // 截取的出点用解码侧 pts 判断, 比源读取位置(KB 级预读)准得多。
+    // 不同容器给的是绝对 pts 或落点相对 pts, 记下首帧做基准自己归一。
+    if (decoded_ms_) {
+      if (decoded_base_ms_) {
+        int64_t expected = -1;
+        decoded_base_ms_->compare_exchange_strong(expected, pts);
+      }
+      decoded_ms_->store(pts);
+    }
+    if (!raw.data || raw.size < 2) {
+      return;
+    }
+    const int16_t* samples = reinterpret_cast<const int16_t*>(raw.data);
+    const int count = raw.size / 2;
+    int peak = 0;
+    for (int i = 0; i < count; ++i) {
+      const int value = samples[i] < 0 ? -static_cast<int>(samples[i])
+                                       : static_cast<int>(samples[i]);
+      if (value > peak) {
+        peak = value;
+      }
+    }
+    const int pct = static_cast<int>(
+        std::sqrt(std::min(peak, 32767) / 32767.0) * 100.0);
+    std::vector<int> batch;
+    int64_t batch_pts = 0;
+    {
+      std::lock_guard<std::mutex> lock(mtx_);
+      if (batch_.empty()) {
+        batch_pts_ = pts;
+      }
+      batch_.push_back(pct);
+      if (batch_.size() < 5) {
+        return;
+      }
+      batch_pts = batch_pts_;
+      batch.swap(batch_);
+    }
+    post(batch_pts, batch);
+  }
+
+  // 收尾排空未满批; tap 线程已 join 后调用
+  void flush() {
+    std::vector<int> batch;
+    int64_t pts = 0;
+    {
+      std::lock_guard<std::mutex> lock(mtx_);
+      if (batch_.empty()) {
+        return;
+      }
+      pts = batch_pts_;
+      batch.swap(batch_);
+    }
+    post(pts, batch);
+  }
+
+ private:
+  void post(int64_t pts, const std::vector<int>& peaks) {
+    json j;
+    j["v"] = 1;
+    j["seq"] = next_seq();
+    j["ts_ms"] = now_ms();
+    j["task_id"] = task_id_;
+    j["run_id"] = run_id_;
+    j["group_id"] = group_id_.empty() ? json(nullptr) : json(group_id_);
+    j["kind"] = kind_;
+    j["type"] = "wave";
+    j["bucket_ms"] = 100;
+    j["pts_ms"] = pts;
+    j["peaks"] = peaks;
+    event_post(j.dump());
+  }
+
+  const int64_t task_id_;
+  const int64_t run_id_;
+  const std::string group_id_;
+  const std::string kind_;
+  std::atomic<int64_t>* decoded_ms_ = nullptr;
+  std::atomic<int64_t>* decoded_base_ms_ = nullptr;
+  std::mutex mtx_;
+  std::vector<int> batch_;
+  int64_t batch_pts_ = 0;
+};
+
+// 识别回调只收最终段; 文本在回调内拷贝, 不跨线程持有引擎指针
+class AsrCollector : public IAudioSttOb {
+ public:
+  struct Cue {
+    int64_t start_ms = 0;
+    int64_t end_ms = 0;
+    std::string text;
+  };
+
+  void onResult(const SttResult& result, const char* text) override {
+    if (!text || text[0] == '\0' || !result.isFinal) {
+      return;
+    }
+    Cue cue;
+    cue.start_ms = result.startPts;
+    cue.end_ms = result.endPts;
+    if (cue.end_ms <= cue.start_ms) {
+      cue.end_ms = cue.start_ms + 1;
+    }
+    cue.text = text;
+    std::lock_guard<std::mutex> lock(mtx_);
+    cues_.push_back(std::move(cue));
+  }
+
+  std::vector<Cue> take() {
+    std::lock_guard<std::mutex> lock(mtx_);
+    return std::move(cues_);
+  }
+
+ private:
+  std::mutex mtx_;
+  std::vector<Cue> cues_;
+};
+
+// tap 输出与 STT 输入同为 16k/mono/S16, 直接喂识别器
+class AsrTap : public IAudioTapOb {
+ public:
+  explicit AsrTap(IAudioStt* stt) : stt_(stt) {}
+  void onFrame(const AvoxData& raw, int64_t pts) override {
+    if (stt_) {
+      stt_->recognize(raw, pts);
+    }
+  }
+
+ private:
+  IAudioStt* stt_ = nullptr;
+};
+
 class RecorderObserver;
 
 struct Task {
@@ -52,18 +205,38 @@ struct Task {
   std::string input;
   std::string output;
   std::string temp;
+  // ASR 的音频旁路产物; 与 SRT 输出分开, 完成后删除
+  std::string media_temp;
+  std::string subtitle_mode;  // embedded | asr
+  int32_t subtitle_index = -1;
+
+  // 图像修复(去水印)
+  ImageOptions image;
 
   VCodecId vcodec = VCodecId::h264;
   ACodecId acodec = ACodecId::aac;
+  TransMode trans_mode = TransMode::TranscodeAll;
   EncodeRateMode rate_mode = EncodeRateMode::quality;
   int32_t quality = 60;
   int32_t bitrate_kbps = 0;
   int32_t audio_bitrate_kbps = -1;
   int32_t audio_sample_rate = 0;
   int32_t audio_channels = 0;
+  int32_t out_width = 0;
+  int32_t out_height = 0;
   bool audio_copy = false;
   bool hardware = false;
   bool overwrite = false;
+
+  // 片段截取: 只走 seek 起点 + 到点关录制, 不另建 kind 流水线
+  bool trim = false;
+  int64_t trim_start_ms = 0;
+  int64_t trim_end_ms = 0;
+  int64_t source_duration_ms = 0;
+  std::atomic<int64_t> progress_ms{-1};
+  // 解码侧音频 pts(原始)与首帧基准; 截取出点用, 无音轨时保持 -1
+  std::atomic<int64_t> decoded_ms{-1};
+  std::atomic<int64_t> decoded_base_ms{-1};
 
   std::atomic<int> state{kQueued};
   std::mutex mtx;
@@ -83,6 +256,11 @@ struct Task {
   IRecorder* recorder = nullptr;
   bool close_called = false;
   std::shared_ptr<RecorderObserver> observer;
+  std::shared_ptr<WaveTap> wave;
+  void* preview_hwnd = nullptr;
+  // 录制器真正进入 recording 后才允许接管预览面: state=kRunning 在 open
+  // 阶段就置了, 此时 onStart 还会 setOffSurface, 先挂面会被拆掉
+  std::atomic<bool> recording{false};
 };
 
 json base_event(const Task& task, const char* type) {
@@ -98,7 +276,8 @@ json base_event(const Task& task, const char* type) {
   return j;
 }
 
-void emit_state(const Task& task, const char* state, const char* stage) {
+void emit_state(const Task& task, const char* state, const char* stage,
+                int64_t queue_position = 0) {
   if (task.terminal_emitted.load()) {
     return;
   }
@@ -106,6 +285,9 @@ void emit_state(const Task& task, const char* state, const char* stage) {
   j["state"] = state;
   if (stage && *stage) {
     j["stage"] = stage;
+  }
+  if (queue_position > 0) {
+    j["queue_position"] = queue_position;
   }
   event_post(j.dump());
 }
@@ -142,7 +324,19 @@ const char* category_for(const std::string& code) {
   if (code == "cancelled") {
     return "cancel";
   }
-  if (code == "engine_mismatch" || code == "ffmpeg_mismatch") {
+  if (code == "no_subtitle_track" || code == "no_subtitle_text" ||
+      code == "bitmap_subtitle" || code == "no_speech" ||
+      code == "subtitle_export_failed" || code == "subtitle_write_failed") {
+    return "subtitle";
+  }
+  if (code == "no_watermark" || code == "mask_load_failed" ||
+      code == "image_decode_failed" || code == "image_encode_failed" ||
+      code == "inpaint_failed") {
+    return "image";
+  }
+  if (code == "engine_mismatch" || code == "ffmpeg_mismatch" ||
+      code == "model_missing" || code == "stt_unavailable" ||
+      code == "inpaint_unavailable") {
     return "environment";
   }
   return "internal";
@@ -150,7 +344,9 @@ const char* category_for(const std::string& code) {
 
 bool retryable_for(const std::string& code) {
   return code == "output_finalize_failed" || code == "internal" ||
-         code == "cancelled" || code == "drain_timeout";
+         code == "cancelled" || code == "drain_timeout" ||
+         code == "subtitle_export_failed" || code == "subtitle_write_failed" ||
+         code == "inpaint_failed" || code == "image_encode_failed";
 }
 
 const char* hint_for(const std::string& code) {
@@ -165,6 +361,20 @@ const char* hint_for(const std::string& code) {
   if (code == "internal" || code == "encode_failed" ||
       code == "decode_failed" || code == "audio_missing") {
     return "open_log_dir";
+  }
+  if (code == "model_missing") {
+    return "download_model";
+  }
+  if (code == "inpaint_unavailable") {
+    return "download_model";
+  }
+  if (code == "no_watermark" || code == "mask_load_failed" ||
+      code == "image_decode_failed") {
+    return "use_mask";
+  }
+  if (code == "bitmap_subtitle" || code == "no_subtitle_track" ||
+      code == "no_subtitle_text") {
+    return "use_asr";
   }
   return "retry";
 }
@@ -212,6 +422,10 @@ void emit_done(Task& task) {
   j["outputs"] = json::array({{{"role", "primary"}, {"path", task.output}}});
   const int64_t total = task.total_ms.load();
   j["duration_ms"] = total > 0 ? total : 0;
+  if (task.trim) {
+    j["trim"] = {{"start_ms", task.trim_start_ms},
+                 {"end_ms", task.trim_end_ms}};
+  }
   event_post(j.dump());
 }
 
@@ -237,12 +451,17 @@ class RecorderObserver : public IRecorderOb {
     }
     if (state == RecorderState::recording) {
       task->state.store(kRunning);
+      task->recording.store(true);
       emit_state(*task, "running", "recording");
+      // onReady 的 setOffSurface 已落位, 此时直接挂面即可
+      preview_request_attach(task->id);
     } else if (state == RecorderState::completed) {
+      task->recording.store(false);
       std::lock_guard<std::mutex> lock(task->mtx);
       task->drained = true;
       task->cv.notify_all();
     } else if (state == RecorderState::failed) {
+      task->recording.store(false);
       std::lock_guard<std::mutex> lock(task->mtx);
       if (task->error_code.empty()) {
         task->error_code = "internal";
@@ -259,12 +478,32 @@ class RecorderObserver : public IRecorderOb {
     if (!task || progress.currentTimeMs < 0) {
       return;
     }
+    // 截取监控每 40ms 读一次, 不能等 200ms 的节流。
+    // startFrac 定位后引擎的 currentTimeMs 已相对落点, 不再减 trim_start。
+    task->progress_ms.store(progress.currentTimeMs);
     const int64_t now = now_ms();
     int64_t last = task->last_emit_ms.load();
     if (now - last < 200) {
       return;
     }
     if (!task->last_emit_ms.compare_exchange_strong(last, now)) {
+      return;
+    }
+    if (task->trim) {
+      const int64_t span = task->trim_end_ms - task->trim_start_ms;
+      const int64_t decoded = task->decoded_ms.load();
+      const int64_t base = task->decoded_base_ms.load();
+      int64_t current = (decoded != -1 && base != -1)
+                            ? decoded - base
+                            : progress.currentTimeMs;
+      if (current < 0) {
+        current = 0;
+      }
+      if (current > span) {
+        current = span;
+      }
+      task->total_ms.store(span);
+      emit_progress(*task, current, span);
       return;
     }
     if (progress.totalTimeMs > 0) {
@@ -335,6 +574,13 @@ std::string jstr(const json& j, const char* key, const std::string& fallback) {
 int32_t jint(const json& j, const char* key, int32_t fallback) {
   if (j.contains(key) && j[key].is_number_integer()) {
     return j[key].get<int32_t>();
+  }
+  return fallback;
+}
+
+int64_t jint64(const json& j, const char* key, int64_t fallback) {
+  if (j.contains(key) && j[key].is_number_integer()) {
+    return j[key].get<int64_t>();
   }
   return fallback;
 }
@@ -427,7 +673,8 @@ std::shared_ptr<Task> parse_task(const std::string& text, int32_t& code,
   }
 
   const std::string kind = jstr(root, "kind", "");
-  if (kind != "transcode" && kind != "remux" && kind != "extract") {
+  if (kind != "transcode" && kind != "remux" && kind != "extract" &&
+      kind != "subtitle" && kind != "trim" && kind != "image") {
     code = kind.empty() ? AK_E_BAD_JSON : AK_E_UNSUPPORTED_KIND;
     error = "unsupported kind: " + kind;
     return nullptr;
@@ -558,6 +805,64 @@ std::shared_ptr<Task> parse_task(const std::string& text, int32_t& code,
   const bool overwrite = jbool(params, "overwrite", false);
   const std::string container = jstr(params, "container", "mp4");
 
+  std::string subtitle_mode = "auto";
+  int32_t subtitle_index = -1;
+  bool subtitle_allow_asr = true;
+  if (kind == "subtitle") {
+    json subtitle = json::object();
+    if (params.contains("subtitle") && params["subtitle"].is_object()) {
+      subtitle = params["subtitle"];
+    }
+    subtitle_mode = jstr(subtitle, "mode", "auto");
+    if (subtitle_mode != "auto" && subtitle_mode != "embedded" &&
+        subtitle_mode != "asr") {
+      code = AK_E_BAD_JSON;
+      error = "unsupported subtitle mode: " + subtitle_mode;
+      return nullptr;
+    }
+    subtitle_index = jint(subtitle, "stream_index", -1);
+    subtitle_allow_asr = jbool(subtitle, "allow_asr", true);
+  }
+
+  TransMode trans_mode = TransMode::TranscodeAll;
+  const std::string trans = jstr(params, "trans_mode", "all");
+  if (trans == "all") {
+    trans_mode = TransMode::TranscodeAll;
+  } else if (trans == "audio_copy") {
+    trans_mode = TransMode::AudioCopy;
+  } else if (trans == "video_copy") {
+    trans_mode = TransMode::VideoCopy;
+  } else {
+    code = AK_E_BAD_JSON;
+    error = "unsupported trans_mode: " + trans;
+    return nullptr;
+  }
+
+  int32_t out_width = std::max(0, jint(video, "width", 0));
+  int32_t out_height = std::max(0, jint(video, "height", 0));
+  if ((out_width == 0) != (out_height == 0)) {
+    code = AK_E_BAD_JSON;
+    error = "video width and height must be set together";
+    return nullptr;
+  }
+  if (out_width > 0) {
+    if (out_width < 2 || out_height < 2 || (out_width & 1) || (out_height & 1)) {
+      code = AK_E_BAD_JSON;
+      error = "video width/height must be even and >= 2";
+      return nullptr;
+    }
+    if (trans_mode == TransMode::VideoCopy) {
+      code = AK_E_BAD_JSON;
+      error = "video_copy cannot change resolution";
+      return nullptr;
+    }
+  }
+  if (trans_mode == TransMode::AudioCopy && acodec == ACodecId::none) {
+    code = AK_E_BAD_JSON;
+    error = "audio_copy requires an audio codec";
+    return nullptr;
+  }
+
   std::error_code ec;
   auto input_path = std::filesystem::u8path(input);
   if (!std::filesystem::exists(input_path, ec) || ec ||
@@ -566,13 +871,64 @@ std::shared_ptr<Task> parse_task(const std::string& text, int32_t& code,
     error = "input file not found: " + input;
     return nullptr;
   }
+  int64_t trim_start_ms = 0;
+  int64_t trim_end_ms = 0;
+  int64_t source_duration_ms = 0;
+  if (kind == "trim") {
+    json trim = json::object();
+    if (params.contains("trim") && params["trim"].is_object()) {
+      trim = params["trim"];
+    }
+    trim_start_ms = jint64(trim, "start_ms", -1);
+    trim_end_ms = jint64(trim, "end_ms", -1);
+    if (trim_start_ms < 0 || trim_end_ms <= trim_start_ms) {
+      code = AK_E_BAD_JSON;
+      error = "trim.start_ms/end_ms required and end must be after start";
+      return nullptr;
+    }
+    const json probe = json::parse(probe_uri_json(input), nullptr, false);
+    if (!probe.is_object() || !probe.value("ok", false)) {
+      code = AK_E_BAD_SOURCE;
+      error = "cannot probe input for trim";
+      return nullptr;
+    }
+    source_duration_ms = probe.value("duration_ms", int64_t{0});
+    if (source_duration_ms <= 0) {
+      code = AK_E_BAD_SOURCE;
+      error = "cannot trim a source with unknown duration";
+      return nullptr;
+    }
+    if (trim_start_ms >= source_duration_ms) {
+      code = AK_E_BAD_JSON;
+      error = "trim.start_ms is past the end of the source";
+      return nullptr;
+    }
+    // io.startFrac 内部把比例钳到 0.9; 超出的起点会被静默拉回, 不如直接拒绝
+    if (trim_start_ms * 10 > source_duration_ms * 9) {
+      code = AK_E_BAD_JSON;
+      error = "trim.start_ms must be within the first 90% of the source";
+      return nullptr;
+    }
+    if (trim_end_ms > source_duration_ms) {
+      trim_end_ms = source_duration_ms;
+    }
+    if (trim_end_ms - trim_start_ms < 40) {
+      code = AK_E_BAD_JSON;
+      error = "trim range is too short";
+      return nullptr;
+    }
+    // 源没音轨时关掉音频编码, 否则产物无音轨会被当成编码失败
+    if (!probe.contains("audio") || !probe["audio"].is_array() ||
+        probe["audio"].empty()) {
+      acodec = ACodecId::none;
+    }
+  }
   if (kind == "extract") {
     if (acodec == ACodecId::none) {
       code = AK_E_BAD_JSON;
       error = "extract requires an audio codec";
       return nullptr;
-    }
-    // 提交前拦掉无音轨, 比开完再失败的报错清楚; 顺带取源音频规格
+    }    // 提交前拦掉无音轨, 比开完再失败的报错清楚; 顺带取源音频规格
     const json probe = json::parse(probe_uri_json(input), nullptr, false);
     if (probe.is_object() && probe.value("ok", false)) {
       if (!probe.contains("audio") || !probe["audio"].is_array() ||
@@ -590,19 +946,167 @@ std::shared_ptr<Task> parse_task(const std::string& text, int32_t& code,
       }
     }
   }
+  if (kind == "subtitle") {
+    const json probe = json::parse(probe_uri_json(input), nullptr, false);
+    if (!probe.is_object() || !probe.value("ok", false)) {
+      code = AK_E_BAD_SOURCE;
+      error = "cannot probe input for subtitle tracks";
+      return nullptr;
+    }    const json tracks = probe.value("subtitles", json::array());
+    const auto text_track = [](const json& track) {
+      return track.value("text", false);
+    };
+    int32_t chosen = -1;
+    if (subtitle_mode != "asr") {
+      if (subtitle_index >= 0) {
+        for (const auto& track : tracks) {
+          if (track.value("index", -1) == subtitle_index) {
+            if (!text_track(track)) {
+              code = AK_E_NO_SUBTITLE;
+              error = "selected subtitle track is bitmap, not text";
+              return nullptr;
+            }
+            chosen = subtitle_index;
+            break;
+          }
+        }
+        if (chosen < 0) {
+          code = AK_E_NO_SUBTITLE;
+          error = "subtitle track not found";
+          return nullptr;
+        }
+      } else {
+        // 先找默认文本轨, 再退回第一条文本轨
+        for (const auto& track : tracks) {
+          if (text_track(track) && track.value("default", false)) {
+            chosen = track.value("index", -1);
+            break;
+          }
+        }
+        if (chosen < 0) {
+          for (const auto& track : tracks) {
+            if (text_track(track)) {
+              chosen = track.value("index", -1);
+              break;
+            }
+          }
+        }
+      }
+    }
+    if (chosen >= 0) {
+      subtitle_mode = "embedded";
+      subtitle_index = chosen;
+    } else if (subtitle_mode == "asr" ||
+               (subtitle_mode == "auto" && subtitle_allow_asr)) {
+      subtitle_mode = "asr";
+      if (!probe.contains("audio") || !probe["audio"].is_array() ||
+          probe["audio"].empty()) {
+        code = AK_E_BAD_SOURCE;
+        error = "input has no audio track for speech recognition";
+        return nullptr;
+      }
+      const auto model_exists = [](const char* rel) {
+        const std::string path = avox::getModelFilePath(rel);
+        std::error_code model_ec;
+        return !path.empty() &&
+               std::filesystem::exists(std::filesystem::u8path(path),
+                                       model_ec) &&
+               !model_ec;
+      };
+      if (!model_exists("stt/sense-voice/model.int8.onnx") ||
+          !model_exists("stt/sense-voice/tokens.txt") ||
+          !model_exists("stt/sense-voice/silero_vad.onnx")) {
+        code = AK_E_MODEL_MISSING;
+        error = "speech recognition model is not downloaded";
+        return nullptr;
+      }
+    } else {
+      code = AK_E_NO_SUBTITLE;
+      error = "input has no text subtitle track";
+      return nullptr;
+    }
+  }
+  ImageOptions image;
+  if (kind == "image") {
+    json image_params = json::object();
+    if (params.contains("image") && params["image"].is_object()) {
+      image_params = params["image"];
+    } else {
+      image_params = params;
+    }
+    image.mode = jstr(image_params, "mode", "auto");
+    if (image.mode != "auto" && image.mode != "mask") {
+      code = AK_E_BAD_JSON;
+      error = "unsupported image mode: " + image.mode;
+      return nullptr;
+    }
+    image.model = jstr(image_params, "model", "lama");
+    if (image.model != "lama" && image.model != "aotgan") {
+      code = AK_E_BAD_JSON;
+      error = "unsupported inpaint model: " + image.model;
+      return nullptr;
+    }
+    image.dilate = std::max(0, std::min(64, jint(image_params, "dilate", 20)));
+    if (image_params.contains("threshold") &&
+        image_params["threshold"].is_number()) {
+      image.threshold = std::max(
+          0.0f, std::min(1.0f, image_params["threshold"].get<float>()));
+    }
+    if (image.mode == "mask") {
+      image.mask_path = jstr(image_params, "mask_path", "");
+      if (image.mask_path.empty()) {
+        code = AK_E_BAD_JSON;
+        error = "image.mask_path is required in mask mode";
+        return nullptr;
+      }
+      const auto mask_file = std::filesystem::u8path(image.mask_path);
+      if (!std::filesystem::exists(mask_file, ec) || ec) {
+        code = AK_E_BAD_SOURCE;
+        error = "mask image not found: " + image.mask_path;
+        return nullptr;
+      }
+    }
+    std::string missing;
+    if (!image_models_ready(image.model, missing)) {
+      code = AK_E_MODEL_MISSING;
+      error = "image repair model is not downloaded: " + missing;
+      return nullptr;
+    }
+  }
   auto output_path = std::filesystem::u8path(output);
   if (output_path.extension().empty()) {
     if (kind == "extract") {
       output_path += (acodec == ACodecId::mp3 && !audio_copy) ? ".mp3" : ".m4a";
+    } else if (kind == "subtitle") {
+      output_path += ".srt";
+    } else if (kind == "image") {
+      output_path += ".png";
     } else {
       output_path += (container == "matroska" || container == "mkv") ? ".mkv"
                                                                      : ".mp4";
+    }
+  }
+  if (kind == "image") {
+    std::string ext = output_path.extension().u8string();
+    std::transform(ext.begin(), ext.end(), ext.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    if (ext != ".png" && ext != ".jpg" && ext != ".jpeg" && ext != ".bmp" &&
+        ext != ".tga") {
+      code = AK_E_BAD_OUTPUT;
+      error = "unsupported image output extension: " + ext;
+      return nullptr;
     }
   }
   ec.clear();
   auto absolute_output = std::filesystem::absolute(output_path, ec);
   if (!ec) {
     output_path = absolute_output;
+  }
+  std::string media_temp;
+  if (kind == "subtitle" && subtitle_mode == "asr") {
+    media_temp = (output_path.parent_path() /
+                  (output_path.stem().u8string() + ".avoxkit-asr.m4a"))
+                     .u8string();
   }
   if (std::filesystem::exists(output_path, ec) &&
       std::filesystem::is_directory(output_path, ec)) {
@@ -639,8 +1143,15 @@ std::shared_ptr<Task> parse_task(const std::string& text, int32_t& code,
   task->input = input_path.u8string();
   task->output = output_path.u8string();
   task->temp = temp_path.u8string();
+  task->media_temp = media_temp;
+  task->subtitle_mode = subtitle_mode;
+  task->subtitle_index = subtitle_index;
+  task->image = image;
   task->vcodec = vcodec;
   task->acodec = acodec;
+  task->trans_mode = trans_mode;
+  task->out_width = out_width;
+  task->out_height = out_height;
   task->rate_mode = rate_mode;
   task->quality = quality;
   task->bitrate_kbps = bitrate_kbps;
@@ -649,6 +1160,10 @@ std::shared_ptr<Task> parse_task(const std::string& text, int32_t& code,
   task->audio_channels = audio_channels;
   task->audio_copy = audio_copy;
   task->hardware = hardware;
+  task->trim = kind == "trim";
+  task->trim_start_ms = trim_start_ms;
+  task->trim_end_ms = trim_end_ms;
+  task->source_duration_ms = source_duration_ms;
   task->overwrite = overwrite;
   task->observer = std::make_shared<RecorderObserver>(task);
   return task;
@@ -724,6 +1239,7 @@ class TaskRuntime {
               error_name(code) + ")");
       return 0;
     }
+    int64_t queue_position = 0;
     {
       std::lock_guard<std::mutex> lock(mtx_);
       if (!running_ || stopping_) {
@@ -733,12 +1249,13 @@ class TaskRuntime {
       task->id = next_id_++;
       tasks_[task->id] = task;
       queue_.push_back(task);
+      queue_position = static_cast<int64_t>(queue_.size());
       cv_.notify_one();
       log(LogLevel::info, "task queued id=" + std::to_string(task->id) +
                               " kind=" + task->kind + " input=" +
                               task->input);
     }
-    emit_state(*task, "queued", nullptr);
+    emit_state(*task, "queued", nullptr, queue_position);
     return task->id;
   }
 
@@ -785,6 +1302,104 @@ class TaskRuntime {
     return AK_OK;
   }
 
+  // 预览窗接管渲染面: 只切 surface, 呈现线程由 WindowRender 在拿到窗口时自启
+  bool attach_preview(int64_t id, void* hwnd) {
+    std::shared_ptr<Task> task;
+    {
+      std::lock_guard<std::mutex> lock(mtx_);
+      auto it = tasks_.find(id);
+      if (it == tasks_.end()) {
+        return false;
+      }
+      task = it->second;
+    }
+    if (task->state.load() != kRunning || !task->recording.load()) {
+      return false;
+    }
+    std::lock_guard<std::mutex> lock(task->recorder_mtx);
+    if (!task->recorder || task->close_called) {
+      return false;
+    }
+    ISurfaceRender* sr = task->recorder->getSurfaceRender();
+    if (!sr) {
+      return false;
+    }
+    // 同窗重绑不再碰 surface; 尺寸变化由呈现线程自己的 updateSize 处理
+    if (task->preview_hwnd != hwnd) {
+      sr->setSurface(hwnd);
+      task->preview_hwnd = hwnd;
+    }
+    log(LogLevel::info, "preview surface attached, task=" + std::to_string(id));
+    return true;
+  }
+
+  // 摘视口: 只把输出切回离屏 CPU, 呈现线程继续消费, 处理不受影响
+  void detach_preview(int64_t id) {
+    std::shared_ptr<Task> task;
+    {
+      std::lock_guard<std::mutex> lock(mtx_);
+      auto it = tasks_.find(id);
+      if (it == tasks_.end()) {
+        return;
+      }
+      task = it->second;
+    }
+    if (task->state.load() != kRunning) {
+      return;
+    }
+    std::lock_guard<std::mutex> lock(task->recorder_mtx);
+    if (!task->recorder || task->close_called) {
+      return;
+    }
+    if (ISurfaceRender* sr = task->recorder->getSurfaceRender()) {
+      sr->setOffSurface(task->hardware ? YuvType::nv12 : YuvType::yuv420P);
+      task->preview_hwnd = nullptr;
+      log(LogLevel::info, "preview surface detached, task=" + std::to_string(id));
+    }
+  }
+
+  // 波形只覆盖音频重新编码的任务; 直拷/封装没有 PCM
+  void attach_wave(Task& task) {
+    if (task.kind != "transcode" && task.kind != "extract" &&
+        task.kind != "trim") {
+      return;
+    }
+    if (task.kind == "extract" && task.audio_copy) {
+      return;
+    }
+    IAudioRender* render = task.recorder ? task.recorder->getAudioRender()
+                                         : nullptr;
+    if (!render) {
+      return;
+    }
+    auto tap = std::make_shared<WaveTap>(task.id, task.run_id, task.group_id,
+                                         task.kind, &task.decoded_ms,
+                                         &task.decoded_base_ms);
+    addAudioTapOb(render, tap.get());
+    AudioDesc out;
+    out.channels = 1;
+    out.format = AudioFormat::AVOX_AUDIO_S16;
+    out.sampleRate = 16000;
+    // 离线转码必须阻塞反压, 否则 tap 跟不上解码会丢掉大部分波形
+    render->setTapBlock(true);
+    render->openTap(out, 100);
+    task.wave = std::move(tap);
+  }
+
+  // tap 线程停止后调用; remove 后再 flush, 避免收尾块丢失
+  void drop_wave(Task& task) {
+    if (!task.wave) {
+      return;
+    }
+    if (task.recorder) {
+      if (IAudioRender* render = task.recorder->getAudioRender()) {
+        removeAudioTapOb(render, task.wave.get());
+      }
+    }
+    task.wave->flush();
+    task.wave.reset();
+  }
+
  private:
   void worker() {
     for (;;) {
@@ -818,7 +1433,14 @@ class TaskRuntime {
     std::lock_guard<std::mutex> lock(task.recorder_mtx);
     if (task.recorder && !task.close_called) {
       task.close_called = true;
+      task.recording.store(false);
+      // 先摘窗口再关源, 防 tick 撞上交换链销毁; 呈现线程随 recorder 析构停止
+      if (ISurfaceRender* sr = task.recorder->getSurfaceRender()) {
+        sr->setOffSurface(task.hardware ? YuvType::nv12 : YuvType::yuv420P);
+      }
       task.recorder->close();
+      task.preview_hwnd = nullptr;
+      drop_wave(task);
     }
   }
 
@@ -830,10 +1452,12 @@ class TaskRuntime {
     if (task.observer) {
       removeRecorderOb(task.recorder, task.observer.get());
     }
+    drop_wave(task);
     // 让引擎回调线程离开 dispatch 后再析构; delete 会 join 其内部线程
     std::this_thread::sleep_for(std::chrono::milliseconds(20));
     delete task.recorder;
     task.recorder = nullptr;
+    task.preview_hwnd = nullptr;
     task.close_called = false;
   }
 
@@ -867,6 +1491,259 @@ class TaskRuntime {
 #endif
   }
 
+  void run_subtitle_embedded(Task& task) {
+    task.state.store(kRunning);
+    emit_state(task, "running", "subtitle_extract");
+    const int32_t rc = avox::exportSubtitleTrack(
+        task.input.c_str(), task.subtitle_index, task.temp.c_str());
+    std::error_code ec;
+    if (task.cancel_requested) {
+      std::filesystem::remove(std::filesystem::u8path(task.temp), ec);
+      emit_cancelled(task);
+      return;
+    }
+    if (rc != 0) {
+      std::filesystem::remove(std::filesystem::u8path(task.temp), ec);
+      const char* code = "subtitle_export_failed";
+      const char* message = "Subtitle export failed";
+      switch (rc) {
+        case -1:
+          code = "input_open_failed";
+          message = "Cannot open input";
+          break;
+        case -2:
+          code = "no_subtitle_track";
+          message = "Subtitle track not found";
+          break;
+        case -3:
+          code = "bitmap_subtitle";
+          message = "Bitmap subtitle cannot be exported as text";
+          break;
+        case -4:
+          code = "decode_failed";
+          message = "Subtitle decode failed";
+          break;
+        case -5:
+          code = "subtitle_write_failed";
+          message = "Cannot write subtitle file";
+          break;
+        case -6:
+          code = "no_subtitle_text";
+          message = "Subtitle track has no text";
+          break;
+        default:
+          break;
+      }
+      emit_error(task, code, message, std::to_string(rc).c_str());
+      return;
+    }
+    std::string move_error;
+    if (!rename_output(task, move_error)) {
+      emit_error(task, "output_finalize_failed", "Cannot finalize output",
+                 move_error.c_str());
+      return;
+    }
+    emit_done(task);
+    log(LogLevel::info, "subtitle export done id=" + std::to_string(task.id) +
+                            " output=" + task.output);
+  }
+
+  void run_subtitle_asr(Task& task) {
+    std::error_code ec;
+    std::filesystem::remove(std::filesystem::u8path(task.temp), ec);
+    std::filesystem::remove(std::filesystem::u8path(task.media_temp), ec);
+
+    IRecorder* recorder = createRecorder(true);
+    if (!recorder) {
+      emit_error(task, "internal", "Cannot create recorder", "");
+      return;
+    }
+    {
+      std::lock_guard<std::mutex> lock(task.recorder_mtx);
+      task.recorder = recorder;
+    }
+    recorder->setMuxerType(MuxerType::ffmpeg);
+    recorder->setVideoCodec(VCodecId::none);
+    recorder->setAudioCodec(ACodecId::aac);
+    AudioDesc encode_desc;
+    encode_desc.channels = 1;
+    encode_desc.sampleRate = 16000;
+    encode_desc.format = AudioFormat::AVOX_AUDIO_FLTP;
+    recorder->setAudioDesc(encode_desc);
+    AudioEncodeParam audio_param;
+    audio_param.bitrateKbps = 48;
+    recorder->setAudioEncodeParam(audio_param);
+    addRecorderOb(recorder, task.observer.get());
+
+    if (!recorder->open(task.input.c_str(), task.media_temp.c_str())) {
+      cleanup_recorder(task);
+      std::filesystem::remove(std::filesystem::u8path(task.media_temp), ec);
+      if (task.cancel_requested) {
+        emit_cancelled(task);
+      } else {
+        emit_error(task, "input_open_failed", "Cannot open input",
+                   task.input.c_str());
+      }
+      return;
+    }
+    task.state.store(kRunning);
+    emit_state(task, "running", "recording");
+
+    IAudioRender* render = recorder->getAudioRender();
+    IAudioStt* stt = createAudioStt(AudioSttType::sherpa);
+    if (!render || !stt) {
+      if (stt) {
+        delete stt;
+      }
+      close_recorder(task);
+      cleanup_recorder(task);
+      std::filesystem::remove(std::filesystem::u8path(task.media_temp), ec);
+      emit_error(task, "stt_unavailable", "Speech recognition plugin unavailable",
+                 "");
+      return;
+    }
+
+    auto collector = std::make_shared<AsrCollector>();
+    auto tap = std::make_shared<AsrTap>(stt);
+    stt->setRecognizerType(RecognizerType::offline);
+    AudioDesc tap_desc;
+    tap_desc.channels = 1;
+    tap_desc.sampleRate = 16000;
+    tap_desc.format = AudioFormat::AVOX_AUDIO_S16;
+    stt->setAudioDesc(tap_desc);
+    addAudioSttOb(stt, collector.get());
+    stt->start();
+    addAudioTapOb(render, tap.get());
+    render->setTapBlock(true);
+    render->openTap(tap_desc, 100);
+
+    {
+      std::unique_lock<std::mutex> lock(task.mtx);
+      task.cv.wait(lock,
+                   [&] { return task.finished || task.cancel_requested; });
+    }
+
+    removeAudioTapOb(render, tap.get());
+    stt->stop();
+    removeAudioSttOb(stt, collector.get());
+    delete stt;
+
+    if (task.cancel_requested) {
+      close_recorder(task);
+      cleanup_recorder(task);
+      std::filesystem::remove(std::filesystem::u8path(task.media_temp), ec);
+      emit_cancelled(task);
+      return;
+    }
+
+    if (!task.completed_ok) {
+      const std::string error_code =
+          task.error_code.empty() ? "internal" : task.error_code;
+      const std::string error_message = task.error_message.empty()
+                                            ? "Speech recognition failed"
+                                            : task.error_message;
+      const std::string error_detail = task.error_detail;
+      cleanup_recorder(task);
+      std::filesystem::remove(std::filesystem::u8path(task.media_temp), ec);
+      emit_error(task, error_code.c_str(), error_message.c_str(),
+                 error_detail.c_str());
+      return;
+    }
+
+    const auto cues = collector->take();
+    ISrtWriter* writer = createSrtWriter();
+    int32_t count = 0;
+    bool written = false;
+    if (writer && writer->open(task.temp.c_str())) {
+      for (const auto& cue : cues) {
+        if (writer->add(cue.start_ms, cue.end_ms, cue.text.c_str())) {
+          ++count;
+        }
+      }
+      written = count > 0 && writer->close();
+    }
+    delete writer;
+
+    cleanup_recorder(task);
+    std::filesystem::remove(std::filesystem::u8path(task.media_temp), ec);
+    if (!written) {
+      std::filesystem::remove(std::filesystem::u8path(task.temp), ec);
+      emit_error(task, "no_speech",
+                 "No speech recognized in this file",
+                 std::to_string(cues.size()).c_str());
+      return;
+    }
+    std::string move_error;
+    if (!rename_output(task, move_error)) {
+      emit_error(task, "output_finalize_failed", "Cannot finalize output",
+                 move_error.c_str());
+      return;
+    }
+    log(LogLevel::info, "subtitle asr done id=" + std::to_string(task.id) +
+                            " cues=" + std::to_string(count) + " output=" +
+                            task.output);
+    emit_done(task);
+  }
+
+  void run_subtitle(Task& task) {
+    if (task.subtitle_mode == "asr") {
+      run_subtitle_asr(task);
+    } else {
+      run_subtitle_embedded(task);
+    }
+  }
+
+  static void image_stage(void* ctx, const char* name) {
+    auto* task = static_cast<Task*>(ctx);
+    emit_state(*task, "running", name);
+  }
+
+  static bool image_cancelled(void* ctx) {
+    auto* task = static_cast<Task*>(ctx);
+    return task->cancel_requested;
+  }
+
+  void run_image(Task& task) {
+    const int64_t started = now_ms();
+    task.state.store(kRunning);
+    ImageCallbacks callbacks;
+    callbacks.ctx = &task;
+    callbacks.stage = &TaskRuntime::image_stage;
+    callbacks.cancelled = &TaskRuntime::image_cancelled;
+    const ImageRunResult result =
+        image_repair(task.input, task.temp, task.image, callbacks);
+
+    std::error_code ec;
+    if (result.cancelled || task.cancel_requested) {
+      std::filesystem::remove(std::filesystem::u8path(task.temp), ec);
+      emit_cancelled(task);
+      return;
+    }
+    if (!result.ok) {
+      std::filesystem::remove(std::filesystem::u8path(task.temp), ec);
+      emit_error(task,
+                 result.code.empty() ? "image_failed" : result.code.c_str(),
+                 result.message.empty() ? "Image repair failed"
+                                        : result.message.c_str(),
+                 result.detail.c_str());
+      log(LogLevel::warn, "image task failed id=" + std::to_string(task.id) +
+                              " code=" + result.code);
+      return;
+    }
+    task.total_ms.store(std::max<int64_t>(0, now_ms() - started));
+    std::string move_error;
+    if (!rename_output(task, move_error)) {
+      std::filesystem::remove(std::filesystem::u8path(task.temp), ec);
+      emit_error(task, "output_finalize_failed", "Cannot finalize output",
+                 move_error.c_str());
+      return;
+    }
+    log(LogLevel::info, "image task done id=" + std::to_string(task.id) +
+                            " watermarks=" + std::to_string(result.watermarks) +
+                            " output=" + task.output);
+    emit_done(task);
+  }
+
   void run_task(std::shared_ptr<Task> task) {
     task->state.store(kStarting);
     emit_state(*task, "running", "opening");
@@ -880,6 +1757,17 @@ class TaskRuntime {
       return;
     }
     std::filesystem::remove(std::filesystem::u8path(task->temp), ec);
+    if (!task->media_temp.empty()) {
+      std::filesystem::remove(std::filesystem::u8path(task->media_temp), ec);
+    }
+    if (task->kind == "subtitle") {
+      run_subtitle(*task);
+      return;
+    }
+    if (task->kind == "image") {
+      run_image(*task);
+      return;
+    }
 
     const bool bTranscode = task->kind != "remux";
     IRecorder* recorder = createRecorder(bTranscode);
@@ -917,9 +1805,18 @@ class TaskRuntime {
         audio_param.bitrateKbps = task->audio_bitrate_kbps;
         recorder->setAudioEncodeParam(audio_param);
       }
-    } else if (task->kind == "transcode") {
+    } else if (task->kind == "transcode" || task->kind == "trim") {
       recorder->setVideoCodec(task->vcodec);
       recorder->setAudioCodec(task->acodec);
+      if (task->trans_mode != TransMode::TranscodeAll) {
+        recorder->setTransMode(task->trans_mode);
+      }
+      if (task->out_width > 0 && task->out_height > 0) {
+        VideoDesc desc;
+        desc.width = task->out_width;
+        desc.height = task->out_height;
+        recorder->setVideoDesc(desc);
+      }
       VideoEncodeParam video_param;
       video_param.rateMode = task->rate_mode;
       video_param.quality = task->quality;
@@ -931,6 +1828,19 @@ class TaskRuntime {
       recorder->setAudioEncodeParam(audio_param);
       if (IOption* option = recorder->getOption()) {
         option->setBool("rec.hard.encode", task->hardware);
+      }
+    }
+    // 截取的起点必须在开录前定位: 开录后再 seek 会把片头帧先写进产物。
+    // startFrac 落目标前最近关键帧, 与时间线展示的关键帧对齐。
+    if (task->trim && task->source_duration_ms > 0 &&
+        task->trim_start_ms > 0) {
+      double frac = static_cast<double>(task->trim_start_ms) /
+                    static_cast<double>(task->source_duration_ms);
+      frac = std::max(0.0, std::min(0.9, frac));
+      if (frac > 0.0005) {
+        if (IOption* option = recorder->getOption()) {
+          option->setNumber("io.startFrac", frac);
+        }
       }
     }
     addRecorderOb(recorder, task->observer.get());
@@ -950,10 +1860,48 @@ class TaskRuntime {
       return;
     }
     task->state.store(kRunning);
+    {
+      std::lock_guard<std::mutex> lock(task->recorder_mtx);
+      attach_wave(*task);
+    }
 
     std::unique_lock<std::mutex> lock(task->mtx);
-    task->cv.wait(lock,
-                  [&] { return task->finished || task->cancel_requested; });
+    while (!task->finished && !task->cancel_requested) {
+      // 到出点主动关录制: close 走非 completed 分支清队, 不会把终点后的
+      // 排队帧补进产物; 关闭后 onComplete 才置 finished。
+      bool reached = false;
+      if (task->trim) {
+        const int64_t decoded = task->decoded_ms.load();
+        const int64_t base = task->decoded_base_ms.load();
+        if (decoded != -1 && base != -1) {
+          // 解码出的音频位置相对首帧; 再往后编码队列还有少量在途数据,
+          // 终点会有一小段偏差, 不承诺帧精确。
+          const int64_t span = task->trim_end_ms - task->trim_start_ms;
+          reached = decoded - base >= span;
+        } else {
+          const int64_t span = task->trim_end_ms - task->trim_start_ms;
+          reached = task->progress_ms.load() >= span;
+        }
+      }
+      if (reached) {
+        lock.unlock();
+        close_recorder(*task);
+        lock.lock();
+        task->cv.wait_for(
+            lock, std::chrono::seconds(10),
+            [&] { return task->finished || task->cancel_requested; });
+        if (!task->finished && !task->cancel_requested) {
+          if (task->error_code.empty()) {
+            task->error_code = "trim_close_timeout";
+            task->error_message = "Cannot stop trim at the requested end";
+          }
+          task->finished = true;
+        }
+        break;
+      }
+      // 5ms 轮询: 转码常跑到 30x 实时, 40ms 就会多录一秒
+      task->cv.wait_for(lock, std::chrono::milliseconds(5));
+    }
 
     if (task->cancel_requested) {
       lock.unlock();
@@ -980,8 +1928,10 @@ class TaskRuntime {
 
     if (completed) {
       const bool encodesAudio =
-          (task->kind == "transcode" || task->kind == "extract") &&
-          task->acodec != ACodecId::none && !task->audio_copy;
+          (task->kind == "transcode" || task->kind == "extract" ||
+           task->kind == "trim") &&
+          task->acodec != ACodecId::none &&
+          task->trans_mode != TransMode::AudioCopy && !task->audio_copy;
       if (encodesAudio && !output_has_audio(task->temp)) {
         std::filesystem::remove(std::filesystem::u8path(task->temp), ec);
         emit_error(*task, "audio_missing", "Audio track missing in output",
@@ -1020,7 +1970,14 @@ class TaskRuntime {
   int64_t next_id_ = 1;
 };
 
-void task_start() { TaskRuntime::instance().start(); }
+void task_start() {
+  preview_set_hooks(
+      [](int64_t id, void* hwnd) -> bool {
+        return TaskRuntime::instance().attach_preview(id, hwnd);
+      },
+      [](int64_t id) { TaskRuntime::instance().detach_preview(id); });
+  TaskRuntime::instance().start();
+}
 
 void task_stop() { TaskRuntime::instance().stop(); }
 

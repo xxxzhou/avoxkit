@@ -20,7 +20,7 @@ extern "C" {
 #endif
 
 #define AK_ABI_MAJOR 1
-#define AK_ABI_MINOR 0
+#define AK_ABI_MINOR 6
 
 typedef void (*ak_event_cb)(const char* event_json, void* user);
 
@@ -38,6 +38,11 @@ typedef enum ak_error {
   AK_E_NOT_FOUND = -10,
   AK_E_TASK_NOT_RUNNING = -11,
   AK_E_NOT_IMPLEMENTED = -12,
+  AK_E_MODEL_MISSING = -13,
+  AK_E_NO_SUBTITLE = -14,
+  AK_E_STT_UNAVAILABLE = -15,
+  AK_E_INPAINT_UNAVAILABLE = -16,
+  AK_E_INPAINT_FAILED = -17,
   AK_E_INTERNAL = -99
 } ak_error;
 
@@ -51,9 +56,28 @@ AK_API int64_t ak_task_submit(const char* task_json);
 AK_API int32_t ak_task_cancel(int64_t task_id);
 AK_API int32_t ak_task_remove(int64_t task_id);
 AK_API const char* ak_probe(const char* uri);
+// 只读媒体索引: 音频包络峰值 + 视频关键帧时间(毫秒, 相对片头)。
+// buckets 为目标峰值数量(64-4000), 返回 {ok,duration_ms,bucket_ms,has_audio,peaks,keyframes_ms}
+AK_API const char* ak_media_index(const char* uri, int32_t buckets);
+// 抓参考帧: request_json = {count|times_ms, width, quality};
+// 返回 {ok,duration_ms,has_video,width,height,frames:[{ms,image}]}, image 为 JPEG base64。
+// 按时间 backward seek, 返回实际解到的帧时间; 不写临时文件。
+AK_API const char* ak_media_frames(const char* uri, const char* request_json);
 AK_API const char* ak_capabilities_json(void);
 AK_API int32_t ak_encoder_probe(const char* codec);
+// 只检测水印(不修复): request_json = {threshold, model}; 返回
+// {ok,width,height,found,boxes:[{x,y,w,h}],detect_ms}。阻塞调用, 调用方自己丢后台线程。
+AK_API const char* ak_image_detect(const char* uri, const char* request_json);
 AK_API void ak_free_string(const char* s);
+
+// 原生窗口直显预览(Windows): 窗口生命周期归页面, 任务绑定归当前可见任务;
+// 只有录制中的任务才显示原生窗, 排队/终态保持隐藏。其余平台 not_implemented。
+AK_API int32_t ak_preview_set_host(void* host_hwnd);
+AK_API int32_t ak_preview_open(void);
+AK_API int32_t ak_preview_bind(int64_t task_id);
+AK_API int32_t ak_preview_unbind(void);
+AK_API int32_t ak_preview_rect(double x, double y, double w, double h);
+AK_API int32_t ak_preview_close(void);
 
 #ifdef __cplusplus
 }

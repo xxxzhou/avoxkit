@@ -4,6 +4,8 @@
 
 #include <nlohmann/json.hpp>
 
+#include "avox/AvoxSubtitle.h"
+
 extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
@@ -79,6 +81,11 @@ std::string probe_uri_json(const std::string& uri) {
     if (lang && lang->value) {
       track["language"] = lang->value;
     }
+    const AVDictionaryEntry* title =
+        av_dict_get(stream->metadata, "title", nullptr, 0);
+    if (title && title->value) {
+      track["title"] = title->value;
+    }
 
     if (par->codec_type == AVMEDIA_TYPE_VIDEO) {
       track["width"] = par->width;
@@ -103,6 +110,10 @@ std::string probe_uri_json(const std::string& uri) {
       track["sample_fmt"] = sample ? sample : "";
       audio.push_back(std::move(track));
     } else if (par->codec_type == AVMEDIA_TYPE_SUBTITLE) {
+      track["text"] = avox::isTextSubtitleCodec(avcodec_get_name(par->codec_id));
+      track["default"] =
+          (stream->disposition & AV_DISPOSITION_DEFAULT) != 0;
+      track["forced"] = (stream->disposition & AV_DISPOSITION_FORCED) != 0;
       subtitles.push_back(std::move(track));
     }
   }

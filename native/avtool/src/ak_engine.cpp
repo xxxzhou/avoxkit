@@ -8,12 +8,16 @@
 
 #include <nlohmann/json.hpp>
 
+#include "ak_preview.hpp"
+
 extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 #include <libavutil/avutil.h>
 }
 
+#include "avox/Avox.hpp"
+#include "avox/AvoxAudio.h"
 #include "avox/AvoxBase.h"
 #include "avox/AvoxLog.h"
 #include "avox/AvoxVersion.h"
@@ -124,6 +128,20 @@ int32_t init_engine(const char* config_json) {
     return AK_E_INVALID_ARG;
   }
 
+  // 模型目录由宿主按需下载; 未显式传入时落在 work/models 下
+  std::string models_dir = config.models_dir;
+  if (models_dir.empty()) {
+    models_dir = (root / "models").u8string();
+  }
+  const auto models = std::filesystem::u8path(models_dir);
+  std::filesystem::create_directories(models, ec);
+  if (ec) {
+    engine().status.store(0);
+    return AK_E_INVALID_ARG;
+  }
+  config.models_dir = models_dir;
+  avox::setModelsRoot(models.u8string().c_str());
+
   {
     std::lock_guard<std::mutex> lock(engine().mtx);
     engine().config = config;
@@ -166,6 +184,8 @@ void shutdown_engine() {
   log(LogLevel::info, "shutdown begin");
   task_stop();
   log(LogLevel::info, "shutdown: task_stop done");
+  preview_shutdown();
+  log(LogLevel::info, "shutdown: preview_shutdown done");
   event_stop();
   log(LogLevel::info, "shutdown: event_stop done");
   log(LogLevel::info, "ak shutdown");
@@ -260,13 +280,42 @@ std::string make_capabilities_json() {
                      {"wav", has_muxer("wav")}};
   j["protocols_in"] = protocols_in;
   j["protocols_out"] = protocols_out;
+
+  bool stt_plugin = false;
+  if (avox::IAudioStt* stt =
+          avox::createAudioStt(avox::AudioSttType::sherpa)) {
+    stt_plugin = true;
+    delete stt;
+  }
+  const auto model_exists = [](const char* rel) {
+    const std::string path = avox::getModelFilePath(rel);
+    std::error_code ec;
+    return !path.empty() &&
+           std::filesystem::exists(std::filesystem::u8path(path), ec) && !ec;
+  };
+  const bool stt_model =
+      model_exists("stt/sense-voice/model.int8.onnx") &&
+      model_exists("stt/sense-voice/tokens.txt") &&
+      model_exists("stt/sense-voice/silero_vad.onnx");
+
+  const bool inpaint_plugin = image_plugin_available();
+  std::string inpaint_missing;
+  const bool inpaint_models = image_models_ready("lama", inpaint_missing);
+
   j["features"] = {{"probe", true},
                    {"transcode", true},
-                   {"remux", false},
-                   {"extract", false},
-                   {"analyze", false},
-                   {"image", false},
-                   {"batch", false}};
+                   {"remux", true},
+                   {"extract", true},
+                   {"trim", true},
+                   {"media_index", true},
+                   {"media_frames", true},
+                   {"subtitle", true},
+                   {"asr", stt_plugin},
+                   {"asr_model", stt_model},
+                   {"analyze", stt_plugin},
+                   {"image", inpaint_plugin},
+                   {"image_inpaint", inpaint_plugin && inpaint_models},
+                   {"batch", true}};
   return j.dump();
 }
 

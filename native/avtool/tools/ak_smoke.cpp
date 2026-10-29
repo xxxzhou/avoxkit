@@ -5,7 +5,9 @@
 #include <condition_variable>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -52,7 +54,36 @@ void usage() {
       "  queue <in> <out_dir> <work_dir> <count> [--hardware off|auto|on]\n"
       "  remux <in> <out> <work_dir> [--overwrite]\n"
       "  extract <in> <out> <work_dir> [--codec aac|mp3|copy]\n"
-      "            [--bitrate N] [--overwrite]\n");
+      "            [--bitrate N] [--overwrite]\n"
+      "  trim <in> <out> <work_dir> <start_ms> <end_ms>\n"
+      "            [--codec h264|hevc] [--quality N]\n"
+      "            [--container mp4|mkv] [--overwrite]\n"
+      "  index <file> [buckets]\n"
+      "  frames <file> <out_dir> [count] [width] [--times a,b,c]\n");
+}
+
+std::string base64_decode(const std::string& text) {
+  static const char kChars[] =
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  std::string out;
+  int value = 0;
+  int bits = -8;
+  for (const unsigned char c : text) {
+    if (c == '=') {
+      break;
+    }
+    const char* found = std::strchr(kChars, c);
+    if (!found) {
+      continue;
+    }
+    value = (value << 6) | static_cast<int>(found - kChars);
+    bits += 6;
+    if (bits >= 0) {
+      out.push_back(static_cast<char>((value >> bits) & 0xFF));
+      bits -= 8;
+    }
+  }
+  return out;
 }
 
 void print_json(const char* label, const char* json) {
@@ -432,6 +463,112 @@ int main(int argc, char** argv) {
     auto task = make_shell("extract", argv[2], argv[3], overwrite);
     task["params"]["audio"] = {{"codec", codec}, {"bitrate_kbps", bitrate}};
     return run_one(task, argv[3], argv[4]);
+  }
+
+  if (command == "trim") {
+    if (argc < 7) {
+      usage();
+      return 1;
+    }
+    std::string codec = "h264";
+    std::string container = "mp4";
+    int32_t quality = 60;
+    bool overwrite = false;
+    for (int i = 7; i < argc; ++i) {
+      const std::string arg = argv[i];
+      if (arg == "--codec" && i + 1 < argc) {
+        codec = argv[++i];
+      } else if (arg == "--container" && i + 1 < argc) {
+        container = argv[++i];
+      } else if (arg == "--quality" && i + 1 < argc) {
+        quality = std::atoi(argv[++i]);
+      } else if (arg == "--overwrite") {
+        overwrite = true;
+      }
+    }
+    auto task = make_task(argv[2], argv[3], "off", codec, quality, overwrite,
+                          "", 0, 0, "aac", container);
+    task["kind"] = "trim";
+    task["params"]["trim"] = {{"start_ms", std::atoll(argv[5])},
+                              {"end_ms", std::atoll(argv[6])}};
+    return run_one(task, argv[3], argv[4]);
+  }
+
+  if (command == "index") {
+    if (argc < 3) {
+      usage();
+      return 1;
+    }
+    const int32_t buckets = argc > 3 ? std::atoi(argv[3]) : 1200;
+    print_json("index", ak_media_index(argv[2], buckets));
+    return 0;
+  }
+
+  if (command == "frames") {
+    if (argc < 4) {
+      usage();
+      return 1;
+    }
+    const int count = argc > 4 ? std::atoi(argv[4]) : 12;
+    const int width = argc > 5 ? std::atoi(argv[5]) : 320;
+    nlohmann::json request = {{"count", count}, {"width", width}};
+    std::vector<int64_t> times;
+    for (int i = 6; i < argc; ++i) {
+      if (std::string(argv[i]) != "--times" || i + 1 >= argc) {
+        continue;
+      }
+      std::string list = argv[++i];
+      size_t begin = 0;
+      while (begin <= list.size()) {
+        const size_t end = list.find(',', begin);
+        const std::string part =
+            list.substr(begin, end == std::string::npos ? std::string::npos
+                                                        : end - begin);
+        if (!part.empty()) {
+          times.push_back(std::atoll(part.c_str()));
+        }
+        if (end == std::string::npos) {
+          break;
+        }
+        begin = end + 1;
+      }
+    }
+    if (!times.empty()) {
+      request["times_ms"] = times;
+    }
+    const std::string request_text = request.dump();
+    const char* raw = ak_media_frames(argv[2], request_text.c_str());
+    const nlohmann::json result =
+        nlohmann::json::parse(raw ? raw : "{}", nullptr, false);
+    if (raw) {
+      ak_free_string(raw);
+    }
+    if (!result.value("ok", false)) {
+      std::printf("frames failed: %s\n",
+                  result.value("message", "").c_str());
+      return 2;
+    }
+    std::filesystem::create_directories(argv[3]);
+    int written = 0;
+    size_t total = 0;
+    if (result.contains("frames") && result["frames"].is_array()) {
+      for (const auto& frame : result["frames"]) {
+        const std::string bytes = base64_decode(frame.value("image", ""));
+        char name[32] = {};
+        std::snprintf(name, sizeof(name), "frame_%03d.jpg", written++);
+        std::ofstream out(std::filesystem::path(argv[3]) / name,
+                          std::ios::binary);
+        out.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+        total += bytes.size();
+        std::printf("  %s  ms=%lld  %zu bytes\n", name,
+                    static_cast<long long>(frame.value("ms", int64_t{0})),
+                    bytes.size());
+      }
+    }
+    std::printf("frames: %d, %dx%d, total=%zu bytes -> %s\n", written,
+                result.value("width", 0), result.value("height", 0), total,
+                argv[3]);
+    return 0;
   }
 
   usage();

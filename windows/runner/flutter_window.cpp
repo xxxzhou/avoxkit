@@ -29,6 +29,23 @@ bool FlutterWindow::OnCreate() {
   RegisterPlugins(flutter_controller_->engine());
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
+  // 预览直显: 主窗 HWND 交给 shim, 由它在主窗上建 avox 渲染子窗。
+  // DLL 尚未被 Dart 加载时主动加载一次, 之后 Dart open 的是同一模块。
+  {
+    HMODULE shim = ::GetModuleHandleW(L"avoxkit_native.dll");
+    if (!shim) {
+      shim = ::LoadLibraryW(L"avoxkit_native.dll");
+    }
+    if (shim) {
+      using SetHostFn = int32_t (*)(void*);
+      auto set_host = reinterpret_cast<SetHostFn>(
+          ::GetProcAddress(shim, "ak_preview_set_host"));
+      if (set_host) {
+        set_host(GetHandle());
+      }
+    }
+  }
+
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
     this->Show();
   });

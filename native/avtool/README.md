@@ -1,14 +1,22 @@
 # native/avtool
 
-avoxkit 的 `ak_*` C ABI shim(M1.0/M1.1 已落地)。
+avoxkit 的 `ak_*` C ABI shim（ABI v1）。
 
 ## 依赖
 
 - avox 仓已按 `docs/m1-kickoff.md` §1.2 构建, 产物在
-  `../../../avox/build-avoxkit/install/AMD64/Release`。
-- ffmpeg kit 在 `../../third_party/ffmpeg/kit`。
+  `../../../avox/build-avoxkit/install/AMD64/Release`。图像修复还需要
+  `avox_cv` / `avox_onnx` / `avox_opencv` 三个插件, 构建开关见
+  `docs/m1-kickoff.md`（`AVOX_ENABLE_ONNX/OPENCV/CV=ON`）。
+- avox 公共头需含 `createWatermarkRemoval()`（avox 2026-10-29 补充的导出）。
+- ffmpeg kit 在 `../../third_party/ffmpeg/kit`。x264/x265 是 MinGW 构建,
+  kit/bin 必须同时有 `libstdc++-6.dll`、`libwinpthread-1.dll`、
+  `libgcc_s_seh-1.dll`; 缺 `libgcc` 时只有 PATH 里带 mingw64 的环境能启动,
+  普通双击会报 error 126。`script/build_windows.ps1` 会从 MSYS2 自动补齐。
 - 两个编译门(`RtcPlayerApi.cpp` 的 ZLM guard、`CmdPlay.cpp` 的 freetype
   guard)已在 avox 仓补上; 若换机器, 先确认这两处。
+- macOS 移植的依赖、静态链接、插件符号可见性和打包步骤见
+  `docs/macos-porting.md`; 本节只写 Windows 路径。
 
 ## 构建
 
@@ -29,11 +37,19 @@ cd native/avtool/build/bin/Release
 ./ak_smoke.exe caps  <work_dir>
 ./ak_smoke.exe probe <media_file> <work_dir>
 ./ak_smoke.exe transcode <in> <out> <work_dir> [--hardware off|auto|on]
-              [--codec h264|hevc] [--quality N] [--cancel-ms N] [--overwrite]
+              [--codec h264|hevc] [--quality N] [--cancel-ms N]
+              [--trans-mode all|audio_copy|video_copy]
+              [--audio-codec aac|mp3] [--container mp4|mov|mkv]
+              [--width N --height N] [--overwrite]
 ./ak_smoke.exe queue <in> <out_dir> <work_dir> <count> [--hardware off|auto|on]
 ./ak_smoke.exe remux <in> <out> <work_dir> [--overwrite]
 ./ak_smoke.exe extract <in> <out> <work_dir> [--codec aac|mp3|copy]
               [--bitrate N] [--overwrite]
+./ak_smoke.exe trim <in> <out> <work_dir> <start_ms> <end_ms>
+              [--codec h264|hevc] [--quality N] [--container mp4|mkv] [--overwrite]
+./ak_smoke.exe index <file> [buckets]
+./ak_smoke.exe frames <file> <out_dir> [count] [width] [--times a,b,c]
+./ak_image_test.exe <image> <models_dir>
 ```
 
 - `version`: ABI、shim/avox/ffmpeg 版本与配置哈希。
@@ -44,6 +60,11 @@ cd native/avtool/build/bin/Release
 - `queue`: 连续提交 N 个任务, 验证单 worker 串行与状态流转。
 - `remux`: 双轨直拷换容器(`createRecorder(false)`)。
 - `extract`: 丢视频轨导出音频; `--codec copy` 为原样封装(不重编码)。
+- `trim`: 重新编码的片段截取, 起点按关键帧定位。
+- `index`: 读音频包络与视频关键帧, 供时间线使用。
+- `frames`: 按时间抓参考帧/缩略图, 输出 JPEG。
+- `ak_image_test`: 图像修复链路（`ak_image_detect` + kind `image` 自动/手绘 mask），
+  需要 LaMa + YOLO 模型。
 
 ## Flutter 构建
 
@@ -71,10 +92,15 @@ Dart 侧入口: `lib/main.dart` → `lib/core/engine.dart` → `lib/native/ak_bi
 
 ## 当前状态
 
-- 已实现: ABI v1 全部函数; 事件线程; `transcode`/`remux`/`extract` handler;
-  单 worker 队列; queued/running/done/failed/cancelled; 取消 draining;
-  临时文件与原子改名; 进度 5Hz 节流; 日志桥接。
-- 未实现: `analyze`/`image`; 多产物; 批处理 UI; URL 输入。
+- 已实现: ABI v1 全部函数; 事件线程; `transcode`/`remux`/`extract`/`subtitle`/
+  `trim`/`image` handler; `ak_media_index`/`ak_media_frames`/`ak_image_detect`;
+  单 worker 队列; queued/running/done/failed/cancelled; 取消 draining; 临时文件与
+  原子改名; 进度 5Hz 节流; 日志桥接; Windows 原生窗口预览。
+- 未实现: `analyze`; 多产物; URL 输入。
+- 图像修复的模型不随包: App 在首次使用时下载 LaMa + YOLO26-Seg 到
+  `<models>/inpaint/`；shim 只经 `avox::getModelFilePath` 读取。
+- 批处理在 Dart 层展开为多个普通任务, shim 只接收具体文件; 组卡、重试和
+  输出策略都在 UI 侧。
 - 临时文件是 `stem.avoxkit-part.ext`(扩展名放最后), 不要改成 `.part` 结尾,
   否则引擎按扩展名选 muxer 会失败。
 - `extract` 出 `.m4a` 依赖 kit 编入 `ipod` muxer; 出 mp3 时 shim 会显式
