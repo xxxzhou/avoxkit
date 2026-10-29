@@ -162,8 +162,8 @@ task_json 形状(例):
 |---|---|---|
 | 格式转换/编码调整 | TranscodeRecorder: 解码→Vulkan 处理→重编码→封装 | `src/avox/muxer/TranscodeRecorder.hpp` |
 | 片段截取 | TranscodeRecorder + io.startFrac(关键帧起点) + 到点 close | 同上; 终点随解码/封装的排队深度有 ±0.5s 误差 |
-| 媒体索引(时间线) | libavformat demux + 仅解音频求峰值 + 视频关键帧 pts | shim `src/ak_index.cpp`; 与 probe 同一套 FFmpeg |
-| 参考帧/缩略图 | 软件解码 + 直接采样缩放(不落全尺寸 RGBA) + avox stb JPEG 出口 | shim `src/ak_frames.cpp`; 只读, 无临时文件 |
+| 媒体索引(时间线) | IMediaReader buildIndex: 一趟 demux, 音频峰值(线性 [0,1])+关键帧 ms | avox `MediaReaderFF`; shim `src/ak_index.cpp` 只做 sqrt→0-100 换算 |
+| 参考帧/缩略图 | 软件解码 + 直接采样缩放(不落全尺寸 RGBA) + avox stb JPEG 出口 | shim `src/ak_frames.cpp`; 只读, 无临时文件; **待切 avox grabFrame(P2, VK 出图)** |
 | 网络直链输入 | IOParseFF: HTTP 分段缓存/TLS/HLS/RTSP/RTMP | `src/avox_ffmpeg/IOParseFF.cpp` |
 | 输出参数面 | quality/cbr/vbr/gop/profile/分辨率(setVideoDesc)/音频重采样 | `src/avox/AvoxMuxer.h:132-196` |
 | 硬编 | 平台硬编可用(mf/qsv/amf/nvenc/vaapi/videotoolbox), 软编 x264/x265；产品默认软编, 硬编需显式开启 | `src/avox_ffmpeg/encoder/FFVEncoder.cpp:196,393` |
@@ -175,10 +175,14 @@ task_json 形状(例):
 | 识别生成字幕 | IAudioStt + Recorder AudioTap → ISrtWriter | `plugins/avox_sherpa`; `src/avox/audio/AudioStt.cpp` |
 | 图片去水印 | IWatermarkRemoval: 自动检测 / 框选 region / mask 修复; LaMa·AOT-GAN·分块; GPU | `plugins/avox_cv/inpaint/`; 用法见 `src/avox_cmd/doc/doc_inpaint.md` |
 | 抽帧/封面 | screenShot → JPEG/PNG/BMP/TGA | `src/avox/video/ImageIO.cpp:131` |
-| 硬编探测 | 编码器注册检查；真编验证未实现 | 本仓 `ak_encoder_probe` |
-| 文件探测 | IoPlan/白名单按 probe 打开 | `src/avox_ffmpeg/IOParseFF.cpp` |
+| 硬编探测 | 编码器注册检查；真编验证未实现 | avox `AvoxRuntime::isEncoderRegistered`; 本仓 `ak_encoder_probe` |
+| 文件探测 | IMediaReader open(ISourceInfo 列轨, 跳过封面图流) | avox `MediaReaderFF`; shim `src/ak_probe.cpp` |
+| 运行时能力 | FFmpeg 版本/配置、编码器/封装器/协议、Vulkan 可用性 | avox `AvoxRuntime.h`; 本仓 `ak_engine.cpp` 自检与能力页 |
 
 ### 4.0.1 参考帧抓取(2026-10-28)
+
+> 本节描述的是 shim `ak_frames.cpp` 现状; avox `grabFrame`(VK 出图)落地后整体替换,
+> 旋转/色彩语义归 avox, shim 只拿 `MediaFrameInfo` + `IImageBuffer` 编码。
 
 - `ak_media_frames` 一次打开文件, 对每个请求时间 `av_seek_frame(BACKWARD)` 到
   关键帧, 向后解码到该时刻, 返回**实际帧时间**(不假装精确到请求值)。

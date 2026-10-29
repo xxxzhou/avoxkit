@@ -1,128 +1,104 @@
+// 媒体探测: avox IMediaReader open → ISourceInfo → JSON。
+// codec 用引擎返回的原始名; 封面图流由 reader 跳过; 旋转是 avox 内部语义,
+// probe 只透出轨上的 rotation 供诊断。
 #include "ak_internal.hpp"
+#include "ak_reader.hpp"
 
+#include <memory>
 #include <string>
 
 #include <nlohmann/json.hpp>
 
+#include "avox/AvoxMedia.h"
 #include "avox/AvoxSubtitle.h"
-
-extern "C" {
-#include <libavcodec/avcodec.h>
-#include <libavformat/avformat.h>
-#include <libavutil/avutil.h>
-#include <libavutil/dict.h>
-#include <libavutil/error.h>
-#include <libavutil/pixdesc.h>
-#include <libavutil/samplefmt.h>
-}
 
 namespace ak {
 namespace {
 
+using nlohmann::json;
+
 std::string error_json(const char* code, const std::string& message) {
-  nlohmann::json j;
+  json j;
   j["ok"] = false;
   j["code"] = code;
   j["message"] = message;
   return j.dump();
 }
 
-std::string ffmpeg_error(int ret) {
-  char buf[AV_ERROR_MAX_STRING_SIZE] = {};
-  av_strerror(ret, buf, sizeof(buf));
-  return buf;
-}
-
 }  // namespace
 
 std::string probe_uri_json(const std::string& uri) {
-  AVFormatContext* format = nullptr;
-  int ret = avformat_open_input(&format, uri.c_str(), nullptr, nullptr);
-  if (ret < 0 || !format) {
-    return error_json("input_open_failed", ffmpeg_error(ret));
+  std::unique_ptr<avox::IMediaReader> reader(avox::createMediaReader());
+  if (!reader) {
+    return error_json("not_implemented", "media reader unavailable");
   }
-
-  ret = avformat_find_stream_info(format, nullptr);
-  if (ret < 0) {
-    const std::string message = ffmpeg_error(ret);
-    avformat_close_input(&format);
-    return error_json("input_open_failed", message);
+  ReaderShim shim;
+  if (!openReader(*reader, shim, uri.c_str())) {
+    reader->close();
+    return error_json(media_error_code(shim.errorCode, "probe_failed"),
+                      shim.errorMessage);
   }
+  avox::ISourceInfo* info = reader->getSourceInfo();
 
-  nlohmann::json j;
+  json j;
   j["ok"] = true;
   j["uri"] = uri;
-  j["format"] =
-      (format->iformat && format->iformat->name) ? format->iformat->name : "";
-  j["duration_ms"] =
-      format->duration != AV_NOPTS_VALUE
-          ? format->duration / (AV_TIME_BASE / 1000)
-          : 0;
-  j["bit_rate"] = format->bit_rate;
-  j["can_seek"] =
-      format->pb && (format->pb->seekable & AVIO_SEEKABLE_NORMAL) != 0;
+  j["format"] = info->formatName();
+  j["duration_ms"] = info->durationMs();
+  j["bit_rate"] = info->bitRate();
+  j["can_seek"] = info->canSeek();
 
-  nlohmann::json video = nlohmann::json::array();
-  nlohmann::json audio = nlohmann::json::array();
-  nlohmann::json subtitles = nlohmann::json::array();
+  json video = json::array();
+  for (int32_t i = 0; i < info->videoSize(); ++i) {
+    const avox::VTrackDesc desc = info->getVideoDesc(i);
+    json track;
+    track["index"] = desc.trackId;
+    track["codec"] = info->getVideoCodecName(i);
+    track["width"] = desc.desc.width;
+    track["height"] = desc.desc.height;
+    track["fps"] = desc.desc.fps;
+    track["rotation"] = desc.rotation;
+    video.push_back(std::move(track));
+  }
 
-  for (unsigned i = 0; i < format->nb_streams; ++i) {
-    const AVStream* stream = format->streams[i];
-    const AVCodecParameters* par = stream ? stream->codecpar : nullptr;
-    if (!par) {
+  json audio = json::array();
+  for (int32_t i = 0; i < info->audioSize(); ++i) {
+    const avox::ATrackDesc desc = info->getAudioDesc(i);
+    json track;
+    track["index"] = desc.trackId;
+    track["codec"] = info->getAudioCodecName(i);
+    track["channels"] = desc.desc.channels;
+    track["sample_rate"] = desc.desc.sampleRate;
+    audio.push_back(std::move(track));
+  }
+
+  json subtitles = json::array();
+  for (int32_t i = 0; i < info->subtitleSize(); ++i) {
+    const avox::ISTrackDesc* desc = info->getSubtitleDesc(i);
+    if (!desc) {
       continue;
     }
-
-    nlohmann::json track;
-    track["index"] = static_cast<int>(i);
-    track["codec"] = avcodec_get_name(par->codec_id);
-    const AVDictionaryEntry* lang =
-        av_dict_get(stream->metadata, "language", nullptr, 0);
-    if (lang && lang->value) {
-      track["language"] = lang->value;
+    const char* codec = desc->codecName();
+    json track;
+    track["index"] = desc->trackId();
+    track["codec"] = codec ? codec : "";
+    if (desc->lang() && *desc->lang()) {
+      track["language"] = desc->lang();
     }
-    const AVDictionaryEntry* title =
-        av_dict_get(stream->metadata, "title", nullptr, 0);
-    if (title && title->value) {
-      track["title"] = title->value;
+    if (desc->title() && *desc->title()) {
+      track["title"] = desc->title();
     }
-
-    if (par->codec_type == AVMEDIA_TYPE_VIDEO) {
-      track["width"] = par->width;
-      track["height"] = par->height;
-      double fps = 0.0;
-      if (stream->avg_frame_rate.den > 0) {
-        fps = av_q2d(stream->avg_frame_rate);
-      } else if (stream->r_frame_rate.den > 0) {
-        fps = av_q2d(stream->r_frame_rate);
-      }
-      track["fps"] = fps;
-      const char* pix = av_get_pix_fmt_name(
-          static_cast<AVPixelFormat>(par->format));
-      track["pix_fmt"] = pix ? pix : "";
-      video.push_back(std::move(track));
-    } else if (par->codec_type == AVMEDIA_TYPE_AUDIO) {
-      track["channels"] = par->ch_layout.nb_channels;
-      track["sample_rate"] = par->sample_rate;
-      track["bit_rate"] = par->bit_rate;
-      const char* sample = av_get_sample_fmt_name(
-          static_cast<AVSampleFormat>(par->format));
-      track["sample_fmt"] = sample ? sample : "";
-      audio.push_back(std::move(track));
-    } else if (par->codec_type == AVMEDIA_TYPE_SUBTITLE) {
-      track["text"] = avox::isTextSubtitleCodec(avcodec_get_name(par->codec_id));
-      track["default"] =
-          (stream->disposition & AV_DISPOSITION_DEFAULT) != 0;
-      track["forced"] = (stream->disposition & AV_DISPOSITION_FORCED) != 0;
-      subtitles.push_back(std::move(track));
-    }
+    track["text"] = avox::isTextSubtitleCodec(codec);
+    track["default"] = desc->isDefault();
+    track["forced"] = desc->forced();
+    subtitles.push_back(std::move(track));
   }
 
   j["video"] = std::move(video);
   j["audio"] = std::move(audio);
   j["subtitles"] = std::move(subtitles);
 
-  avformat_close_input(&format);
+  reader->close();
   return j.dump();
 }
 

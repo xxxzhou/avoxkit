@@ -1,6 +1,12 @@
 # avox 只读媒体接口设计（IMediaReader）
 
-状态：设计稿，待 avox 实现。目标是把 avoxkit 里直连 FFmpeg 的探测、索引、抓帧收回 avox，
+状态：**avox 侧 P0/P1 已落地**（`AvoxMedia.h`/`AvoxRuntime.h`/`MediaReaderFF`，
+open/probe/index 可用；`grabFrame` 是 P2 占位，直接回 `renderUnavailable`）。
+avoxkit 侧 `ak_probe`/`ak_index`/`ak_engine` 已切到新接口并通过 170 项功能检查；
+`ak_frames` 仍走原 libav 路径，等 avox grabFrame(P2) 落地后切换。
+以 avox 仓 `src/avox/AvoxMedia.h` 为最终接口口径，本文保留设计过程与决策记录。
+
+目标：把 avoxkit 里直连 FFmpeg 的探测、索引、抓帧收回 avox，
 让产品侧只保留一套媒体读取路径。
 
 ## 1. 背景

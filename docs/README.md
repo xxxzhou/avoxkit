@@ -5,7 +5,7 @@
 | [features.md](features.md) | 对外功能说明：当前可用功能与设置 | 当前 |
 | [architecture.md](architecture.md) | 技术分层、任务模型、C ABI、构建配方 | 技术设计，部分未实现 |
 | [functional-architecture.md](functional-architecture.md) | 功能模型、扩展机制、批量与 UI 规划 | 设计稿，部分未实现 |
-| [avox-media-reader-api.md](avox-media-reader-api.md) | avox 只读媒体接口：探测、索引、抓帧 | 设计稿，待 avox 实现 |
+| [avox-media-reader-api.md](avox-media-reader-api.md) | avox 只读媒体接口：探测、索引、抓帧 | 落地中：avox P0/P1 已实现，抓帧待 P2 |
 | [ui.md](ui.md) | Flutter 端视觉与组件基准 | 当前基准 |
 | [testing.md](testing.md) | 无头测试与回归步骤 | 内部测试 |
 | [macos-porting.md](macos-porting.md) | macOS 移植：环境、构建、打包与验收 | 移植指南，未落地 |

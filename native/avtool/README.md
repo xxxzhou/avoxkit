@@ -54,15 +54,19 @@ cd native/avtool/build/bin/Release
 
 - `version`: ABI、shim/avox/ffmpeg 版本与配置哈希。
 - `init`: 建日志目录、桥接 avox 日志、自检 `--enable-libmp3lame`/aac/avformat 63。
-- `caps`: 编码器/容器/协议/features 快照; 硬编 `verified` 目前为 false。
-- `probe`: libavformat 直接探测, 不启动引擎。
+- `caps`: 编码器/容器/协议/features 快照; 硬编 `verified` 目前为 false; `vulkan`
+  为 avox `isVulkanAvailable()`。
+- `probe`: avox `IMediaReader` open + ISourceInfo 列轨(跳过封面图流), 不启动引擎。
 - `transcode`: 单文件转码; 事件会逐条打印(`[event] {...}`)。
 - `queue`: 连续提交 N 个任务, 验证单 worker 串行与状态流转。
 - `remux`: 双轨直拷换容器(`createRecorder(false)`)。
 - `extract`: 丢视频轨导出音频; `--codec copy` 为原样封装(不重编码)。
 - `trim`: 重新编码的片段截取, 起点按关键帧定位。
-- `index`: 读音频包络与视频关键帧, 供时间线使用。
-- `frames`: 按时间抓参考帧/缩略图, 输出 JPEG。
+- `index`: avox `IMediaReader` buildIndex, 读音频包络(线性峰值, shim 转 0-100)
+  与视频关键帧, 供时间线使用。
+- `frames`: 按时间抓参考帧/缩略图, 输出 JPEG。**仍是 shim 直连 libav 的旧实现**;
+  等 avox `grabFrame`(P2, VK 出图)落地后切到 IMediaReader, 届时从 CMake 摘掉
+  avformat/avcodec 链接。
 - `ak_image_test`: 图像修复链路（`ak_image_detect` + kind `image` 自动/手绘 mask），
   需要 LaMa + YOLO 模型。
 

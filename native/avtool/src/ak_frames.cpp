@@ -1,6 +1,8 @@
 // 抓帧: 只读 demux + 视频解码, 按时间 backward seek 到关键帧再向前解一帧。
 // 采样缩放直接在 YUV 平面上做, 不落 RGBA 全尺寸中间图; 编码复用 avox 的
 // stb JPEG 出口, 返回 base64, 调用方不需要临时文件。
+// TODO(avox P2): 这是本仓最后一块直连 libav 的实现; 等 avox grabFrame
+// (SurfaceRenderVk 出图) 落地后整体切换, 并从 CMake 摘掉 avformat/avcodec。
 #include "ak_internal.hpp"
 
 #include <algorithm>

@@ -37,6 +37,8 @@ target_compile_definitions(avoxkit_native PRIVATE
   _CRT_SECURE_NO_WARNINGS)
 target_compile_options(avoxkit_native PRIVATE
   $<$<CXX_COMPILER_ID:MSVC>:/utf-8>)
+# libav 仅剩 ak_frames 在用(probe/index/engine 已走 avox IMediaReader/AvoxRuntime);
+# avox grabFrame(P2) 落地后切 ak_frames 并摘掉这组链接
 target_link_libraries(avoxkit_native PRIVATE
   "${AVOX_LIB}"
   "${KIT_DIR}/bin/avformat.lib"

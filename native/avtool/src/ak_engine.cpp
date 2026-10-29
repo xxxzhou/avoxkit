@@ -10,40 +10,35 @@
 
 #include "ak_preview.hpp"
 
-extern "C" {
-#include <libavcodec/avcodec.h>
-#include <libavformat/avformat.h>
-#include <libavutil/avutil.h>
-}
-
 #include "avox/Avox.hpp"
 #include "avox/AvoxAudio.h"
 #include "avox/AvoxBase.h"
 #include "avox/AvoxLog.h"
+#include "avox/AvoxRuntime.h"
 #include "avox/AvoxVersion.h"
 
 namespace ak {
 namespace {
 
 int32_t self_check(std::string& detail) {
-  const char* config = avcodec_configuration();
-  if (!config) {
+  const avox::FFmpegRuntimeInfo runtime = avox::getFFmpegRuntimeInfo();
+  if (!runtime.buildConfig) {
     detail = "avcodec_configuration() returned null";
     return AK_E_FFMPEG_MISMATCH;
   }
-  if (!std::strstr(config, "--enable-libmp3lame")) {
+  if (!std::strstr(runtime.buildConfig, "--enable-libmp3lame")) {
     detail = "running avcodec was not built with --enable-libmp3lame";
     return AK_E_FFMPEG_MISMATCH;
   }
-  if (!avcodec_find_encoder_by_name("libmp3lame")) {
+  if (!avox::isEncoderRegistered("libmp3lame")) {
     detail = "libmp3lame encoder is not registered";
     return AK_E_FFMPEG_MISMATCH;
   }
-  if (!avcodec_find_encoder_by_name("aac")) {
+  if (!avox::isEncoderRegistered("aac")) {
     detail = "aac encoder is not registered";
     return AK_E_FFMPEG_MISMATCH;
   }
-  if ((avformat_version() >> 16) != 63) {
+  if ((runtime.avformatVersion >> 16) != 63) {
     detail = "avformat major version mismatch (expected 63)";
     return AK_E_FFMPEG_MISMATCH;
   }
@@ -209,14 +204,17 @@ std::string make_version_json() {
                {"build_time", AVOX_BUILD_TIME},
                {"dll_dir", run_dir ? run_dir : ""}};
 
-  const char* config = avcodec_configuration();
+  const avox::FFmpegRuntimeInfo runtime = avox::getFFmpegRuntimeInfo();
+  const bool has_libmp3lame =
+      runtime.buildConfig && std::strstr(runtime.buildConfig,
+                                         "--enable-libmp3lame") != nullptr;
   j["ffmpeg"] = {
-      {"version", av_version_info()},
-      {"avcodec", avcodec_version()},
-      {"avformat", avformat_version()},
-      {"avutil", avutil_version()},
-      {"config_fnv1a", fnv1a_hex(config ? config : "")},
-      {"has_libmp3lame", config && std::strstr(config, "--enable-libmp3lame")}};
+      {"version", runtime.version ? runtime.version : ""},
+      {"avcodec", runtime.avcodecVersion},
+      {"avformat", runtime.avformatVersion},
+      {"avutil", runtime.avutilVersion},
+      {"config_fnv1a", fnv1a_hex(runtime.buildConfig ? runtime.buildConfig : "")},
+      {"has_libmp3lame", has_libmp3lame}};
 
 #if defined(_WIN32)
   j["platform"] = "windows-x64";
@@ -239,30 +237,38 @@ std::string make_version_json() {
 
 std::string make_capabilities_json() {
   const auto has_encoder = [](const char* name) {
-    return avcodec_find_encoder_by_name(name) != nullptr;
+    return avox::isEncoderRegistered(name);
   };
   const auto has_muxer = [](const char* name) {
-    return av_guess_format(name, nullptr, nullptr) != nullptr;
+    return avox::hasMuxer(name);
   };
 
   std::set<std::string> protocols_in;
   std::set<std::string> protocols_out;
-  void* opaque = nullptr;
-  while (const char* name = avio_enum_protocols(&opaque, 0)) {
-    protocols_in.insert(name);
+  const int32_t in_count = avox::getProtocolCount(false);
+  for (int32_t i = 0; i < in_count; ++i) {
+    if (const char* name = avox::getProtocolName(false, i)) {
+      protocols_in.insert(name);
+    }
   }
-  opaque = nullptr;
-  while (const char* name = avio_enum_protocols(&opaque, 1)) {
-    protocols_out.insert(name);
+  const int32_t out_count = avox::getProtocolCount(true);
+  for (int32_t i = 0; i < out_count; ++i) {
+    if (const char* name = avox::getProtocolName(true, i)) {
+      protocols_out.insert(name);
+    }
   }
 
-  const char* config = avcodec_configuration();
+  const avox::FFmpegRuntimeInfo runtime = avox::getFFmpegRuntimeInfo();
+  const bool has_libmp3lame =
+      runtime.buildConfig && std::strstr(runtime.buildConfig,
+                                         "--enable-libmp3lame") != nullptr;
   nlohmann::json j;
   j["probed_at_ms"] = now_ms();
   j["ffmpeg"] = {
-      {"version", av_version_info()},
-      {"config_fnv1a", fnv1a_hex(config ? config : "")},
-      {"has_libmp3lame", config && std::strstr(config, "--enable-libmp3lame")}};
+      {"version", runtime.version ? runtime.version : ""},
+      {"config_fnv1a", fnv1a_hex(runtime.buildConfig ? runtime.buildConfig : "")},
+      {"has_libmp3lame", has_libmp3lame}};
+  j["vulkan"] = avox::isVulkanAvailable();
   j["encoders"] = {
       {"h264",
        {{"software", has_encoder("libx264")},
@@ -321,7 +327,7 @@ std::string make_capabilities_json() {
 
 int32_t encoder_probe_impl(const std::string& codec) {
   const auto has = [](const char* name) {
-    return avcodec_find_encoder_by_name(name) != nullptr;
+    return avox::isEncoderRegistered(name);
   };
   if (codec == "h264" || codec == "avc") {
     return (has("h264_mf") || has("libx264")) ? 1 : 0;

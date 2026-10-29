@@ -557,6 +557,8 @@ class _ClipPageState extends State<ClipPage> {
               endMs: _endMs,
               index: _index,
               frames: _source?.strip?.frames ?? const [],
+              frameWidth: _source?.strip?.width ?? 0,
+              frameHeight: _source?.strip?.height ?? 0,
               stripNote: _stripNote,
               enabled: _durationMs > 0 && _probeError == null,
               onChanged: (range) {

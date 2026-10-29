@@ -25,6 +25,8 @@ class AkTrimTimeline extends StatefulWidget {
     required this.onChanged,
     this.index,
     this.frames = const [],
+    this.frameWidth = 0,
+    this.frameHeight = 0,
     this.stripNote,
     this.onScrub,
     this.onFramesNeeded,
@@ -40,6 +42,10 @@ class AkTrimTimeline extends StatefulWidget {
 
   /// 整片缩略图(按时间铺开); 空则只显示 stripNote
   final List<MediaFrame> frames;
+
+  /// 引擎返回的实际输出宽高(已含旋转语义); 决定缩略图格子的宽高比
+  final int frameWidth;
+  final int frameHeight;
   final String? stripNote;
 
   /// 指针所在/正在拖动的时刻; null 表示离开时间线
@@ -308,6 +314,8 @@ class _AkTrimTimelineState extends State<AkTrimTimeline> {
                         color: AkColors.bgDeep,
                         child: AkFilmstrip(
                           frames: widget.frames,
+                          frameWidth: widget.frameWidth,
+                          frameHeight: widget.frameHeight,
                           durationMs: widget.durationMs,
                           viewStart: _viewport.viewStart,
                           viewEnd: _viewport.viewEnd,
