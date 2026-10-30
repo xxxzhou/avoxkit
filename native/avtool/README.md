@@ -64,9 +64,8 @@ cd native/avtool/build/bin/Release
 - `trim`: 重新编码的片段截取, 起点按关键帧定位。
 - `index`: avox `IMediaReader` buildIndex, 读音频包络(线性峰值, shim 转 0-100)
   与视频关键帧, 供时间线使用。
-- `frames`: 按时间抓参考帧/缩略图, 输出 JPEG。**仍是 shim 直连 libav 的旧实现**;
-  等 avox `grabFrame`(P2, VK 出图)落地后切到 IMediaReader, 届时从 CMake 摘掉
-  avformat/avcodec 链接。
+- `frames`: avox `IMediaReader` grabFrame 抓参考帧/缩略图(JPEG)。出图走 VK
+  (缩放/HDR→SDR/竖拍转置), 无 Vulkan 回 `renderUnavailable`, 不兜底 CPU。
 - `ak_image_test`: 图像修复链路（`ak_image_detect` + kind `image` 自动/手绘 mask），
   需要 LaMa + YOLO 模型。
 

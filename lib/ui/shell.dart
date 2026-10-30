@@ -6,6 +6,7 @@ import 'pages/about_page.dart';
 import 'pages/clip_page.dart';
 import 'pages/convert_page.dart';
 import 'pages/extract_page.dart';
+import 'pages/record_page.dart';
 import 'pages/repair_page.dart';
 import 'pages/subtitle_page.dart';
 import 'pages/tasks_page.dart';
@@ -30,6 +31,7 @@ class _AppShellState extends State<AppShell> {
   int _index = 0;
 
   static const _items = [
+    _NavSpec('录屏', Icons.radio_button_checked),
     _NavSpec('转换', Icons.swap_horiz),
     _NavSpec('截取片段', Icons.content_cut),
     _NavSpec('提取音频', Icons.audiotrack),
@@ -57,10 +59,11 @@ class _AppShellState extends State<AppShell> {
                 child: IndexedStack(
                   index: _index,
                   children: [
+                    RecordPage(engine: widget.engine),
                     ConvertPage(
                       engine: widget.engine,
                       taskStore: widget.taskStore,
-                      active: _index == 0,
+                      active: _index == 1,
                     ),
                     ClipPage(
                       engine: widget.engine,

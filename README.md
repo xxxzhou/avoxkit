@@ -2,7 +2,7 @@
 
 **English | [简体中文](README.zh-CN.md)**
 
-Avoxkit is a desktop audio/video toolbox: convert, trim, extract audio and subtitles, and remove watermarks from images, with one queue for single files or whole folders.
+Avoxkit is a desktop audio/video toolbox: record your screen, convert, trim, extract audio and subtitles, and remove watermarks from images, with one queue for single files or whole folders.
 
 > Flutter · Windows x64 · AGPLv3 · v0.1.0
 
@@ -21,6 +21,7 @@ Avoxkit is built for everyday audio/video work, not for editing. The current rel
 | Feature | What it does |
 |---|---|
 | **Convert** | Change container, video codec, resolution or audio codec. When only the container changes and the target supports the source codecs, the file is remuxed instead of re-encoded. Single files and whole folders. |
+| **Record screen** | Record a display or a fixed screen region with microphone and system audio. After stopping, export an MP4 with a background, rounded corners and shadow. |
 | **Trim** | Pick a start and end point on a thumbnail, waveform and keyframe timeline, then save that segment. The clip is re-encoded, not losslessly cut. |
 | **Extract audio** | Export M4A or MP3; for a single file you can also export the original audio track untouched. Single files and folders. |
 | **Extract subtitles** | Export embedded text subtitles as SRT. When there is none, generate them with on-device speech recognition — nothing is uploaded. |

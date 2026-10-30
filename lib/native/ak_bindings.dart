@@ -72,6 +72,26 @@ typedef _AkPreviewRectDart = int Function(double, double, double, double);
 typedef _AkPreviewCloseC = Int32 Function();
 typedef _AkPreviewCloseDart = int Function();
 
+// 录屏会话(ABI 1.7)
+typedef _AkStringVoidRC = Pointer<Utf8> Function();
+typedef _AkStringVoidRD = Pointer<Utf8> Function();
+
+typedef _AkCaptureStartC = Pointer<Utf8> Function(Pointer<Utf8>);
+typedef _AkCaptureStartD = Pointer<Utf8> Function(Pointer<Utf8>);
+
+typedef _AkCaptureIdC = Pointer<Utf8> Function(Int64);
+typedef _AkCaptureIdD = Pointer<Utf8> Function(int);
+
+typedef _AkCaptureIdRcC = Int32 Function(Int64);
+typedef _AkCaptureIdRcD = int Function(int);
+
+// 录屏工程(ABI 1.8)
+typedef _AkProjectSetC = Pointer<Utf8> Function(Int64, Pointer<Utf8>);
+typedef _AkProjectSetDart = Pointer<Utf8> Function(int, Pointer<Utf8>);
+
+typedef _AkProjectCloseC = Void Function(Int64);
+typedef _AkProjectCloseDart = void Function(int);
+
 class AkBindingsException implements Exception {
   AkBindingsException(this.message);
   final String message;
@@ -234,6 +254,87 @@ class AkBindings {
       _previewRect(x, y, w, h);
 
   int previewClose() => _previewClose();
+
+  // ---- 录屏会话 ----
+  late final _AkStringVoidRD _captureDevices = _lib
+      .lookupFunction<_AkStringVoidRC, _AkStringVoidRD>(
+        'ak_capture_devices_json',
+      );
+  late final _AkCaptureStartD _captureStart = _lib
+      .lookupFunction<_AkCaptureStartC, _AkCaptureStartD>('ak_capture_start');
+  late final _AkCaptureIdD _captureStatus = _lib
+      .lookupFunction<_AkCaptureIdC, _AkCaptureIdD>('ak_capture_status');
+  late final _AkCaptureIdRcD _capturePause = _lib
+      .lookupFunction<_AkCaptureIdRcC, _AkCaptureIdRcD>('ak_capture_pause');
+  late final _AkCaptureIdRcD _captureResume = _lib
+      .lookupFunction<_AkCaptureIdRcC, _AkCaptureIdRcD>('ak_capture_resume');
+  late final _AkCaptureIdD _captureStop = _lib
+      .lookupFunction<_AkCaptureIdC, _AkCaptureIdD>('ak_capture_stop');
+
+  String captureDevicesJson() => _take(_captureDevices(), _freeString);
+
+  String captureStart(String requestJson) {
+    final pointer = requestJson.toNativeUtf8();
+    try {
+      return _take(_captureStart(pointer), _freeString);
+    } finally {
+      malloc.free(pointer);
+    }
+  }
+
+  String captureStatus(int sessionId) =>
+      _take(_captureStatus(sessionId), _freeString);
+
+  int capturePause(int sessionId) => _capturePause(sessionId);
+
+  int captureResume(int sessionId) => _captureResume(sessionId);
+
+  String captureStop(int sessionId) =>
+      _take(_captureStop(sessionId), _freeString);
+
+  // ---- 录屏工程 ----
+  late final _AkCaptureStartD _projectOpen = _lib
+      .lookupFunction<_AkCaptureStartC, _AkCaptureStartD>('ak_project_open');
+  late final _AkProjectSetDart _projectSet = _lib
+      .lookupFunction<_AkProjectSetC, _AkProjectSetDart>('ak_project_set');
+  late final _AkProjectSetDart _projectExport = _lib
+      .lookupFunction<_AkProjectSetC, _AkProjectSetDart>('ak_project_export');
+  late final _AkCaptureIdD _projectStatus = _lib
+      .lookupFunction<_AkCaptureIdC, _AkCaptureIdD>('ak_project_status');
+  late final _AkProjectCloseDart _projectClose = _lib
+      .lookupFunction<_AkProjectCloseC, _AkProjectCloseDart>('ak_project_close');
+
+  String projectOpen(String requestJson) {
+    final pointer = requestJson.toNativeUtf8();
+    try {
+      return _take(_projectOpen(pointer), _freeString);
+    } finally {
+      malloc.free(pointer);
+    }
+  }
+
+  String projectSet(int projectId, String patchJson) {
+    final pointer = patchJson.toNativeUtf8();
+    try {
+      return _take(_projectSet(projectId, pointer), _freeString);
+    } finally {
+      malloc.free(pointer);
+    }
+  }
+
+  String projectExport(int projectId, String requestJson) {
+    final pointer = requestJson.toNativeUtf8();
+    try {
+      return _take(_projectExport(projectId, pointer), _freeString);
+    } finally {
+      malloc.free(pointer);
+    }
+  }
+
+  String projectStatus(int projectId) =>
+      _take(_projectStatus(projectId), _freeString);
+
+  void projectClose(int projectId) => _projectClose(projectId);
 
   String _take(Pointer<Utf8> pointer, void Function(Pointer<Utf8>) free) {
     if (pointer == nullptr) {

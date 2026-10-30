@@ -255,6 +255,15 @@ void preview_set_host(void* host_hwnd) {
 #endif
 }
 
+void* preview_host() {
+#ifdef _WIN32
+  std::lock_guard<std::mutex> lock(g_mtx);
+  return static_cast<void*>(g_host);
+#else
+  return nullptr;
+#endif
+}
+
 bool preview_open_window() {
 #ifdef _WIN32
   std::lock_guard<std::mutex> lock(g_mtx);

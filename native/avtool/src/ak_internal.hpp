@@ -47,6 +47,10 @@ int32_t event_set_callback(ak_event_cb cb, void* user);
 void task_start();
 void task_stop();
 
+// capture / project (录屏会话与工程导出)
+void capture_shutdown();
+void project_shutdown();
+
 // log
 void log(LogLevel level, const std::string& msg);
 void log_set_file(const std::string& path, const std::string& level);

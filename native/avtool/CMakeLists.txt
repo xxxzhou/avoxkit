@@ -37,14 +37,9 @@ target_compile_definitions(avoxkit_native PRIVATE
   _CRT_SECURE_NO_WARNINGS)
 target_compile_options(avoxkit_native PRIVATE
   $<$<CXX_COMPILER_ID:MSVC>:/utf-8>)
-# libav 仅剩 ak_frames 在用(probe/index/engine 已走 avox IMediaReader/AvoxRuntime);
-# avox grabFrame(P2) 落地后切 ak_frames 并摘掉这组链接
-target_link_libraries(avoxkit_native PRIVATE
-  "${AVOX_LIB}"
-  "${KIT_DIR}/bin/avformat.lib"
-  "${KIT_DIR}/bin/avcodec.lib"
-  "${KIT_DIR}/bin/avutil.lib"
-  "${KIT_DIR}/bin/swresample.lib")
+# 全部媒体能力已收回 avox: probe/index/frame 走 IMediaReader, 混音/封装走
+# IMediaComposer(avox AvoxCapture.h), 运行时能力走 AvoxRuntime。本目标不再直链 libav
+target_link_libraries(avoxkit_native PRIVATE "${AVOX_LIB}")
 if(MSVC)
   # Release 也出 PDB / MAP, 崩溃时能按 RVA 定位到函数
   target_link_options(avoxkit_native PRIVATE /DEBUG /MAP)
@@ -128,6 +123,19 @@ target_compile_options(ak_image_test PRIVATE
   $<$<CXX_COMPILER_ID:MSVC>:/utf-8>)
 target_link_libraries(ak_image_test PRIVATE avoxkit_native "${AVOX_LIB}")
 
+# 录屏整链无头测试: 采集 -> finalize -> 工程导出 (Windows; GDI 道)
+add_executable(ak_capture_test tools/ak_capture_test.cpp)
+target_include_directories(ak_capture_test PRIVATE
+  "${CMAKE_CURRENT_SOURCE_DIR}/include"
+  "${CMAKE_CURRENT_SOURCE_DIR}/third_party")
+target_compile_definitions(ak_capture_test PRIVATE
+  NOMINMAX
+  WIN32_LEAN_AND_MEAN
+  _CRT_SECURE_NO_WARNINGS)
+target_compile_options(ak_capture_test PRIVATE
+  $<$<CXX_COMPILER_ID:MSVC>:/utf-8>)
+target_link_libraries(ak_capture_test PRIVATE avoxkit_native)
+
 # 只带 kit 的 ffmpeg + avox.dll, 不带 avox 3rdparty 的 ffmpeg
 file(GLOB KIT_DLLS CONFIGURE_DEPENDS "${KIT_DIR}/bin/*.dll")
 set(AK_RUNTIME_DLLS "${AVOX_DLL}" ${KIT_DLLS})
@@ -135,6 +143,14 @@ add_custom_command(TARGET avoxkit_native POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy_if_different
           ${AK_RUNTIME_DLLS} "$<TARGET_FILE_DIR:avoxkit_native>"
   COMMENT "Copy avox/ffmpeg runtime DLLs")
+
+# 场景层 shader 从 exe 目录 assets/glsl 加载; 少了它场景层静默禁用、导出全丢帧
+if(EXISTS "${AVOX_OUT_DIR}/assets")
+  add_custom_command(TARGET avoxkit_native POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${AVOX_OUT_DIR}/assets" "$<TARGET_FILE_DIR:avoxkit_native>/assets"
+    COMMENT "Copy avox assets (glsl)")
+endif()
 
 # 语音识别插件与 sherpa/onnxruntime 依赖; 图像修复再带 avox_cv/onnx/opencv。
 # 模型不随包, 首次使用时下载

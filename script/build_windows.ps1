@@ -76,6 +76,7 @@ $required = @(
   "plugins\avox_onnx.dll",
   "plugins\avox_opencv.dll",
   "plugins\opencv_world4130.dll",
+  "assets\glsl\scene.comp.spv",
   "data\app.so"
 )
 foreach ($name in $required) {

@@ -57,8 +57,9 @@ if(EXISTS "${AVOXKIT_NATIVE_BIN}/avoxkit_native.dll")
   endif()
 endif()
 
-# avox 渲染着色器: VK 管线按 exe 同目录 assets/glsl 加载, 缺了转码渲染静默残废
-set(AVOX_ASSETS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../../avox/build-avoxkit/install/AMD64/assets")
+# avox 渲染着色器: VK 管线按 exe 同目录 assets/glsl 加载, 缺了转码渲染静默残废。
+# 用 native 构建目录: avox 的 install/AMD64/assets 是旧布局(无 scene.comp.spv)。
+set(AVOX_ASSETS_DIR "${AVOXKIT_NATIVE_BIN}/assets")
 if(EXISTS "${AVOX_ASSETS_DIR}/glsl")
   add_custom_command(TARGET ${BINARY_NAME} POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory

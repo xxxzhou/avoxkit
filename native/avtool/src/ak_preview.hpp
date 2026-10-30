@@ -10,6 +10,8 @@ namespace ak {
 
 // Runner 启动时交主窗 HWND; 不交则预览口返回未实现, UI 自己退化。
 void preview_set_host(void* host_hwnd);
+// 录屏 WDA 复用同一主窗句柄; 未交返回 nullptr
+void* preview_host();
 
 // 窗口生命周期归页面; 任务绑定归当前可见任务。bind 只对录制中的任务生效,
 // 其余状态窗口保持隐藏, UI 占位可见。

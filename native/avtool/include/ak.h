@@ -20,7 +20,7 @@ extern "C" {
 #endif
 
 #define AK_ABI_MAJOR 1
-#define AK_ABI_MINOR 6
+#define AK_ABI_MINOR 8
 
 typedef void (*ak_event_cb)(const char* event_json, void* user);
 
@@ -43,6 +43,9 @@ typedef enum ak_error {
   AK_E_STT_UNAVAILABLE = -15,
   AK_E_INPAINT_UNAVAILABLE = -16,
   AK_E_INPAINT_FAILED = -17,
+  AK_E_CAPTURE_BUSY = -20,
+  AK_E_CAPTURE_DEVICE = -21,
+  AK_E_CAPTURE_STATE = -22,
   AK_E_INTERNAL = -99
 } ak_error;
 
@@ -78,6 +81,39 @@ AK_API int32_t ak_preview_bind(int64_t task_id);
 AK_API int32_t ak_preview_unbind(void);
 AK_API int32_t ak_preview_rect(double x, double y, double w, double h);
 AK_API int32_t ak_preview_close(void);
+
+// ---- 屏幕录制(录屏会话, ABI 1.7): 引擎 ICaptureSession 的 C 包装 ----
+// 多输入=多文件(视频 mkv + 每路音频 wav), 不合成; 区域=显示器左上原点的
+// 物理像素; 事件走统一 JSON 通道(kind=capture_state/capture_error)。
+// 返回的 JSON 由 ak_free_string 释放。
+// 显示器/麦克风/回环枚举: {monitors:[{id,name,x,y,w,h,primary}],
+// mics:[{id,name}], loops:[{id,name}]}
+AK_API const char* ak_capture_devices_json(void);
+// json={out_dir, monitor_id, fps, cursor, mic, loop, region_w, region_h}
+// region 0=整屏; -> {session_id}; 录制中再 start 返回 capture_busy
+AK_API const char* ak_capture_start(const char* request_json);
+// -> {state, clock_ms, fps, frames, missed, dropped, elapsed_ms, bytes,
+//     geometry:{x,y,w,h}}
+AK_API const char* ak_capture_status(int64_t session_id);
+AK_API int32_t ak_capture_pause(int64_t session_id);
+AK_API int32_t ak_capture_resume(int64_t session_id);
+// 停止并收尾(回填 WAV 头/写 session.json/混音+remux 出 capture.mkv/写 project.json);
+// -> {dir, capture, project, duration_ms, audio_tracks, videos:[], audios:[],
+//     finalize_error?}
+AK_API const char* ak_capture_stop(int64_t session_id);
+
+// ---- 录屏工程(ABI 1.8): 场景包装 + 裁剪 + 导出 ----
+// 打开 session 目录(读 session.json/project.json/cursor.bin/events.json/shapes.json)
+// json={dir}; -> {project_id, dir, video, duration_ms, width, height, cursor_mode}
+AK_API const char* ak_project_open(const char* request_json);
+// 深合并 project.json(场景/时间线/音频增益); -> {project}
+AK_API const char* ak_project_set(int64_t project_id, const char* patch_json);
+// json={out_path, overwrite, start_ms, end_ms, codec, width, height, fps,
+//       quality, bitrate_kbps, cursor}; -> {export_id}; 事件 kind=project_state
+AK_API const char* ak_project_export(int64_t project_id, const char* request_json);
+// -> {state, pct, stage, out_path, error?, warning?}
+AK_API const char* ak_project_status(int64_t project_id);
+AK_API void ak_project_close(int64_t project_id);
 
 #ifdef __cplusplus
 }
