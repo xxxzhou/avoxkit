@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/compat_options.dart';
 import '../../core/engine.dart';
 import '../tokens.dart';
 import '../widgets/panel.dart';
@@ -44,6 +45,36 @@ class AboutPage extends StatelessWidget {
                 const Text('无账号', style: AkText.panelTitle),
                 const SizedBox(height: 6),
                 Text('不需要注册、登录，也不收集使用数据。', style: AkText.body),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
+          Panel(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('兼容性', style: AkText.panelTitle),
+                const SizedBox(height: 6),
+                Text(
+                  '远程桌面、自动化工具或读屏软件在启动时读取界面，'
+                  '可能触发 Flutter 引擎的已知崩溃。勾选并重启后关闭界面的无障碍信息；'
+                  '需要读屏时请取消，等 Flutter 修复后再开。',
+                  style: AkText.body,
+                ),
+                const SizedBox(height: 12),
+                ValueListenableBuilder<bool>(
+                  valueListenable: CompatOptions.disableAccessibility,
+                  builder: (context, disabled, _) => Row(
+                    children: [
+                      Switch(
+                        value: disabled,
+                        onChanged: CompatOptions.setDisableAccessibility,
+                      ),
+                      const SizedBox(width: 6),
+                      Text('关闭无障碍支持', style: AkText.body),
+                    ],
+                  ),
+                ),
               ],
             ),
           ),

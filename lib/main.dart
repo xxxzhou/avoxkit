@@ -2,6 +2,7 @@ import 'dart:ui' show AppExitResponse;
 
 import 'package:flutter/material.dart';
 
+import 'core/compat_options.dart';
 import 'core/engine.dart';
 import 'core/task_store.dart';
 import 'native/ak_bindings.dart';
@@ -10,6 +11,7 @@ import 'ui/tokens.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await CompatOptions.load();
   late final Engine engine;
   try {
     engine = Engine(AkBindings.open());
@@ -113,6 +115,16 @@ class _AvoxkitAppState extends State<AvoxkitApp> {
       title: 'Avoxkit',
       debugShowCheckedModeBanner: false,
       theme: akTheme(),
+      builder: (context, child) {
+        return ValueListenableBuilder<bool>(
+          valueListenable: CompatOptions.disableAccessibility,
+          builder: (context, disabled, _) {
+            final content = child ?? const SizedBox.shrink();
+            // 关掉语义树可规避 Flutter Windows 无障碍桥的启动期崩溃
+            return disabled ? ExcludeSemantics(child: content) : content;
+          },
+        );
+      },
       home: ready
           ? AppShell(engine: widget.engine, taskStore: _taskStore!)
           : _StartupError(engine: widget.engine),
