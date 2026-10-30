@@ -42,6 +42,15 @@ if ($LASTEXITCODE -ne 0) { throw "native build failed" }
 
 & $Flutter pub get
 if ($LASTEXITCODE -ne 0) { throw "flutter pub get failed" }
+# 增量缓存会留着旧的 icon tree-shake 子集: 源码比字体新就清掉, 否则图标缺字
+$iconFont = Join-Path $root "build/flutter_assets/fonts/MaterialIcons-Regular.otf"
+$newestDart = Get-ChildItem (Join-Path $root "lib") -Recurse -Filter *.dart |
+  Sort-Object LastWriteTime -Descending | Select-Object -First 1
+if ($newestDart -and (-not (Test-Path $iconFont) -or
+    $newestDart.LastWriteTime -gt (Get-Item $iconFont).LastWriteTime)) {
+  Remove-Item (Join-Path $root ".dart_tool/flutter_build") -Recurse -Force -ErrorAction SilentlyContinue
+  Remove-Item (Join-Path $root "build/flutter_assets") -Recurse -Force -ErrorAction SilentlyContinue
+}
 & $Flutter build windows --release
 if ($LASTEXITCODE -ne 0) { throw "flutter build failed" }
 
