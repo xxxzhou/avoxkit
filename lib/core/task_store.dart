@@ -24,8 +24,6 @@ class TaskStore extends ChangeNotifier {
     return values;
   }
 
-  TaskItem? get latest => tasks.isEmpty ? null : tasks.first;
-
   TaskItem? taskById(int? id) => id == null ? null : _tasks[id];
 
   List<TaskGroup> get groups {
@@ -305,7 +303,23 @@ class TaskStore extends ChangeNotifier {
     }
   }
 
+  /// 任务事件白名单: 录屏/工程导出也走同一回调, 但 type=event 且没有 task_id
+  static const Set<String> taskEventTypes = {
+    'state',
+    'progress',
+    'wave',
+    'error',
+    'done',
+  };
+
+  static bool isTaskEvent(AkEvent event) =>
+      event.taskId > 0 && taskEventTypes.contains(event.type);
+
   void _onEvent(AkEvent event) {
+    // 不过滤会凭空多出一个永远排队的「任务 #0」
+    if (!isTaskEvent(event)) {
+      return;
+    }
     final item = _tasks.putIfAbsent(
       event.taskId,
       () => TaskItem(

@@ -27,10 +27,14 @@ class ExtractPage extends StatefulWidget {
     super.key,
     required this.engine,
     required this.taskStore,
+    this.active = true,
   });
 
   final Engine engine;
   final TaskStore taskStore;
+
+  /// 页面不可见时收起原生预览窗, 否则它会盖住别的页并吃掉点击
+  final bool active;
 
   @override
   State<ExtractPage> createState() => _ExtractPageState();
@@ -452,7 +456,7 @@ class _ExtractPageState extends State<ExtractPage> {
             style: AkText.micro,
           ),
           const SizedBox(height: 20),
-          if (_lastTaskId != null || _lastGroupId != null)
+          if ((_lastTaskId != null || _lastGroupId != null) && widget.active)
             ListenableBuilder(
               listenable: widget.taskStore,
               builder: (context, _) {

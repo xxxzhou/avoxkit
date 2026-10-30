@@ -6,7 +6,8 @@ import '../../core/task_store.dart';
 import '../tokens.dart';
 import 'panel.dart';
 
-/// 工具页底部的单任务回执: 进度 / 取消 / 错误 / 产物路径
+/// 工具页底部的单任务回执: 进度 / 取消 / 错误 / 产物路径。
+/// 只认本页提交的任务; 退回全局最新会把别的工具的任务显示在这里。
 class AkLatestTask extends StatelessWidget {
   const AkLatestTask({super.key, required this.taskStore, this.taskId});
 
@@ -18,7 +19,7 @@ class AkLatestTask extends StatelessWidget {
     return ListenableBuilder(
       listenable: taskStore,
       builder: (context, _) {
-        final task = taskStore.taskById(taskId) ?? taskStore.latest;
+        final task = taskStore.taskById(taskId);
         if (task == null) {
           return const SizedBox.shrink();
         }

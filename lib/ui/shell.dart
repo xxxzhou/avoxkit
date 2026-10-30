@@ -72,6 +72,7 @@ class _AppShellState extends State<AppShell> {
                     ExtractPage(
                       engine: widget.engine,
                       taskStore: widget.taskStore,
+                      active: _index == 3,
                     ),
                     SubtitlePage(
                       engine: widget.engine,
