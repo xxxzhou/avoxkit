@@ -49,7 +49,7 @@
 与 avox 的分层模式是「Flutter + FFI + C shim + 引擎」；本仓代码自建。
 avox 没有官方 C 导出层, 因此本仓 native 层负责任务/事件/参数边界。
 
-## 2. `ak_*` C ABI(v1，当前 minor 5)
+## 2. `ak_*` C ABI(v1，当前 minor 8)
 
 > 早期草案: ABI v1 的函数面、事件所有权(`ak_event_free`)、`ak_init(config_json)`、
 > 能力探测与版本协商以 `docs/functional-architecture.md` §5 为准。
@@ -95,6 +95,21 @@ int         ak_preview_bind(int64_t task_id);
 int         ak_preview_unbind(void);
 int         ak_preview_rect(double x, double y, double w, double h);
 int         ak_preview_close(void);
+
+// 录屏会话(v1.7): 多输入=多文件; 停止时 finalize(混音 + remux + project.json)
+const char* ak_capture_devices_json(void);
+const char* ak_capture_start(const char* request_json);
+const char* ak_capture_status(int64_t session_id);
+int         ak_capture_pause(int64_t session_id);
+int         ak_capture_resume(int64_t session_id);
+const char* ak_capture_stop(int64_t session_id);
+
+// 录屏工程(v1.8): 场景包装 + 裁剪区间 + 导出 MP4
+const char* ak_project_open(const char* request_json);
+const char* ak_project_set(int64_t project_id, const char* patch_json);
+const char* ak_project_export(int64_t project_id, const char* request_json);
+const char* ak_project_status(int64_t project_id);
+void        ak_project_close(int64_t project_id);
 ```
 
 > 预览接/摘视口 = `setSurface(hwnd)` / `setOffSurface(yuv)`: WindowRender 拿到
@@ -163,8 +178,11 @@ task_json 形状(例):
 | 格式转换/编码调整 | TranscodeRecorder: 解码→Vulkan 处理→重编码→封装 | `src/avox/muxer/TranscodeRecorder.hpp` |
 | 片段截取 | TranscodeRecorder + io.startFrac(关键帧起点) + 到点 close | 同上; 终点随解码/封装的排队深度有 ±0.5s 误差 |
 | 媒体索引(时间线) | IMediaReader buildIndex: 一趟 demux, 音频峰值(线性 [0,1])+关键帧 ms | avox `MediaReaderFF`; shim `src/ak_index.cpp` 只做 sqrt→0-100 换算 |
-| 参考帧/缩略图 | 软件解码 + 直接采样缩放(不落全尺寸 RGBA) + avox stb JPEG 出口 | shim `src/ak_frames.cpp`; 只读, 无临时文件; **待切 avox grabFrame(P2, VK 出图)** |
+| 参考帧/缩略图 | IMediaReader grabFrame: 软件解码 + VK 离屏渲染(缩放/HDR→SDR/竖拍转置) + avox stb JPEG 出口 | avox `MediaReaderFF`/`MediaThumbRenderer`; shim `src/ak_frames.cpp` 只算目标时刻并编码; 无 Vulkan 回 `renderUnavailable`, 不兜底 |
 | 网络直链输入 | IOParseFF: HTTP 分段缓存/TLS/HLS/RTSP/RTMP | `src/avox_ffmpeg/IOParseFF.cpp` |
+| 录屏采集 | CaptureSession: 多路设备→多文件 + 会话时钟 + session.json; WGC/GDI(Win) / ScreenCaptureKit(mac) | `src/avox/player/CaptureSession.hpp`; `src/avox_windows/winrt/CaptureWindows.cpp` |
+| 录屏包装导出 | TranscodeRecorder + VkSceneLayer + IEditorScene: 背景/留白/圆角/阴影/比例 + 光标精灵 | `src/avox_vulkan/layer/VkSceneLayer.*`; `src/avox/player/EditorScene.*` |
+| 录屏混音/封装 | avox `IMediaComposer`: WAV 自解析 + swr 混音 + AAC + 流直拷 remux | `src/avox_ffmpeg/MediaComposerFF.cpp`; 本仓 `native/avtool/src/ak_media_audio.cpp` 只是薄壳 |
 | 输出参数面 | quality/cbr/vbr/gop/profile/分辨率(setVideoDesc)/音频重采样 | `src/avox/AvoxMuxer.h:132-196` |
 | 硬编 | 平台硬编可用(mf/qsv/amf/nvenc/vaapi/videotoolbox), 软编 x264/x265；产品默认软编, 硬编需显式开启 | `src/avox_ffmpeg/encoder/FFVEncoder.cpp:196,393` |
 | 无损 remux | StreamRecorder(createRecorder(false)) | `src/avox/muxer/StreamRecorder.hpp` |
@@ -179,21 +197,18 @@ task_json 形状(例):
 | 文件探测 | IMediaReader open(ISourceInfo 列轨, 跳过封面图流) | avox `MediaReaderFF`; shim `src/ak_probe.cpp` |
 | 运行时能力 | FFmpeg 版本/配置、编码器/封装器/协议、Vulkan 可用性 | avox `AvoxRuntime.h`; 本仓 `ak_engine.cpp` 自检与能力页 |
 
-### 4.0.1 参考帧抓取(2026-10-28)
+### 4.0.1 参考帧抓取(2026-10-30 切 avox grabFrame)
 
-> 本节描述的是 shim `ak_frames.cpp` 现状; avox `grabFrame`(VK 出图)落地后整体替换,
-> 旋转/色彩语义归 avox, shim 只拿 `MediaFrameInfo` + `IImageBuffer` 编码。
-
-- `ak_media_frames` 一次打开文件, 对每个请求时间 `av_seek_frame(BACKWARD)` 到
-  关键帧, 向后解码到该时刻, 返回**实际帧时间**(不假装精确到请求值)。
-- 缩放直接在解码后的 YUV 平面上采样: Y 双线性、UV 最近邻, 按
-  `AVPixFmtDescriptor` 的 plane/step/shift/depth 取分量(8/10/12bit、420/422/444、
-  nv12/p010); 不生成全尺寸 RGBA 中间图, 4K 也只要目标尺寸的缓冲。
-- 按流的 display matrix 旋转 90/180/270(手机竖拍); 色彩矩阵按
-  `colorspace` + `color_range`(BT.601/709/2020, full/limited), 未标注时按
-  >576 行猜 709。
-- 编码走 avox `getImageBase64`(stb JPEG), 返回 base64; Dart 在 isolate 里调用。
+- `ak_media_frames` 走 avox `IMediaReader::grabFrame`: 一次 open, 对每个请求时间
+  seek 到关键帧、向后解码到该时刻, 返回**实际帧时间**(不假装精确到请求值)。
+- 出图走 `MediaThumbRenderer`(`SurfaceRenderVk` 的 enableImage 分支): GPU 缩放、
+  HDR→SDR tone map、竖拍转置都在 avox 内完成; shim 只拿 `MediaFrameInfo` +
+  `IImageBuffer`, 用 avox `getImageBase64`(stb JPEG) 编码。
+- 无 Vulkan 回 `renderUnavailable`, 不做 CPU 兜底; UI 按
+  `MediaFrames.unavailableHint` 显示「Vulkan 组件未启用，缩略图/画面预览不可用」。
 - 无视频轨/不支持的像素格式返回 `frames:[]` + `reason`, 时间线退化为波形刻度。
+- Dart 在 isolate 里调用; `getImageBase64` 用进程级 static 缓冲, 缩略图与精确帧
+  并发编码时取串与拷贝必须在锁内。
 
 ### 4.1 字幕任务(2026-10-27)
 
@@ -264,8 +279,10 @@ filtergraph 补能力——上述都走引擎自有链。
 ## 7. 当前状态
 
 - 已完成: 单文件/文件夹转换、封装、提取音频、提取字幕（内嵌 + 本地识别）、
-  片段截取、任务队列、Windows 原生预览。
-- 未完成: 无损剪切/合并、URL 输入、图片工具、字幕翻译/烧录、三端打包。
+  片段截取、图像修复、任务队列、Windows 原生预览、录屏与工程导出
+  （背景/留白/圆角/阴影 + 光标重绘）。
+- 未完成: 无损剪切/合并、URL 输入、字幕翻译/烧录、录屏工程编辑器/自动缩放/
+  摄像头画中画、三端打包。
 - 用户功能与边界以 `docs/features.md` 为准；本文其余章节描述技术分层与后续扩展。
 
 ## 8. 关于页

@@ -248,7 +248,7 @@ native/avtool/build/bin/Release/ak_smoke.exe trim trim_src.mp4 out.mp4 work 1000
 ### 2.4.2 竖拍与只读链路（avox IMediaReader）
 
 probe/index/能力探测走 avox `IMediaReader`/`AvoxRuntime`（v1 仅本地文件）；
-`ak_frames` 暂仍走 libav，等 avox grabFrame(P2) 落地后切换。
+`ak_frames` 走 `IMediaReader::grabFrame`（VK 出图），不再直连 libav。
 
 ```bash
 ffmpeg -f lavfi -i "testsrc2=size=640x360:rate=30:duration=6" \
@@ -271,8 +271,10 @@ MSYS_NO_PATHCONV=1 native/avtool/build/bin/Release/ak_smoke.exe \
 - `frames`：输出 320×569（显示方向），画面正立；时间线 `AkFilmstrip` 按
   该宽高排版（见 `filmstrip_test.dart`），预览窗口保持 16:9 黑边。
 - 网络 URI 打开即回 `ok:false, code=unsupported`（"v1 supports local files only"）。
-- `caps` 含 `"vulkan"` 字段；「Vulkan 未启用」的 UI 文案等 avox grabFrame(P2)
-  接入时一并上线。
+- `caps` 含 `"vulkan"` 字段；无 Vulkan 时 `frames` 回
+  `reason=render_unavailable`，UI 显示「Vulkan 组件未启用，缩略图/画面预览不可用」
+  （`MediaFrames.unavailableHint` → 时间线 stripNote / 画面参考 emptyText）。
+  像素格式不支持同理走 `unsupported_pix_fmt`，不回退 CPU 解码。
 
 参考结果（2026-10-30）：以上全部符合；横拍 strip 8×(320×180)，
 trim 10000–16000 产物 5972ms（±1.5s 容差内）。
@@ -319,6 +321,45 @@ UI 侧回归：
 「无法加载 avoxkit_native.dll」(error 126)。开发机的 Git/VS 环境会把
 `mingw64/bin` 塞进 PATH，缺 MinGW 运行时也能启动；普通双击才暴露问题：
 kit 的 x264/x265 经 `libstdc++-6.dll` 依赖 `libgcc_s_seh-1.dll`。
+
+### 2.8 录屏整链（采集 → finalize → 工程导出）
+
+```bash
+cmake --build native/avtool/build --config Release --target ak_capture_test
+native/avtool/build/bin/Release/ak_capture_test.exe <tmp>/ak_cap 5
+native/avtool/build/bin/Release/ak_capture_test.exe <tmp>/ak_cap_audio 5 --audio
+```
+
+覆盖：
+
+- 显示器采集（30fps）→ `screen.mkv`；停止后 finalize 出 `capture.mkv`
+  （视频 + 混音 AAC）与 `project.json`，并落 `cursor.bin`/`shapes.json`/
+  `events.json`/`session.json`。
+- 工程导出：1280×720 H.264 30fps MP4；背景渐变/留白/圆角/阴影；
+  关闭“录下系统光标”时按遥测轨迹重绘光标。
+- `--audio` 且系统正在播放声音时落 `audio/sys.wav`，混音后进成片；
+  系统静音时 WASAPI 回环不产包，成片无音轨属预期。
+
+检查产物：
+
+```bash
+ffprobe -v error -show_entries stream=index,codec_type,codec_name,width,height,sample_rate,channels -of json <tmp>/ak_cap/export.mp4
+ffmpeg -ss 1 -i <tmp>/ak_cap/export.mp4 -frames:v 1 <tmp>/frame.png
+```
+
+2026-10-30 参考结果（2560×1440 采集 → 1280×720 导出）：3s/5s 采集与导出均
+成功；背景、圆角、阴影与内容区边界逐像素核对一致；光标置于 (1280,720) 后
+导出画面中心可见重绘光标；回环播放正弦波时 `sys.wav` 为 `pcm_f32le`
+48k 立体声，混音 AAC 成片 max -35.6 dB。
+
+环境注意：
+
+- 本机向日葵 IDD 虚拟屏接管期间 WGC 恒黑（显示器/窗口目标皆黑），测试用
+  `AVOX_CAPTURE_GDI=1` 强制 GDI 采集道；WGC 内容需物理屏另行验证。
+- 场景层 shader 必须随包部署：缺 `assets/glsl/scene.comp.spv` 时场景层静默
+  禁用，尺寸守卫会把导出帧全丢（表现为导出成功但没有画面）。
+- 远程桌面/虚拟屏下注入鼠标点击不可靠（光标位置被外部环境改写），本环境
+  未验证点击事件与涟漪；光标轨迹重绘已验证。
 
 ## 3. 一次跑完
 

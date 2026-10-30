@@ -141,7 +141,7 @@ class _ClipPageState extends State<ClipPage> {
     if (source.stripLoading && source.strip == null) {
       return '缩略图载入中…';
     }
-    return '无画面预览';
+    return source.framesHint ?? '无画面预览';
   }
 
   String get _activeHint {
@@ -609,7 +609,9 @@ class _ClipPageState extends State<ClipPage> {
                 timeMs: _activeMs,
                 label: _activeLabel,
                 timeLabel: formatTimestamp(_activeMs),
-                emptyText: _hasVideo ? '正在读取画面…' : '这个文件没有画面',
+                emptyText: !_hasVideo
+                    ? '这个文件没有画面'
+                    : (source.framesHint ?? '正在读取画面…'),
               ),
             ),
             const SizedBox(width: 14),

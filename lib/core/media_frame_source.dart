@@ -46,6 +46,15 @@ class MediaFrameSource extends ChangeNotifier {
   MediaFrames? get strip => _strip;
   bool get stripLoading => _stripLoading;
 
+  /// 画面预览不可用的人话提示(缩略图为空且原因是 Vulkan/像素格式时)
+  String? get framesHint {
+    final strip = _strip;
+    if (strip == null || strip.frames.isNotEmpty) {
+      return null;
+    }
+    return strip.unavailableHint;
+  }
+
   Future<void> loadIndex() async {
     final token = ++_indexToken;
     _indexLoading = true;

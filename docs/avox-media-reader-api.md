@@ -1,9 +1,11 @@
 # avox 只读媒体接口设计（IMediaReader）
 
-状态：**avox 侧 P0/P1 已落地**（`AvoxMedia.h`/`AvoxRuntime.h`/`MediaReaderFF`，
-open/probe/index 可用；`grabFrame` 是 P2 占位，直接回 `renderUnavailable`）。
-avoxkit 侧 `ak_probe`/`ak_index`/`ak_engine` 已切到新接口并通过 170 项功能检查；
-`ak_frames` 仍走原 libav 路径，等 avox grabFrame(P2) 落地后切换。
+状态：**avox 侧 P0/P1/P2 已落地**（`AvoxMedia.h`/`AvoxRuntime.h`/
+`MediaReaderFF` + `avox/video/MediaThumbRenderer`，open/probe/index/grabFrame
+全可用；抓帧走 Vulkan 离屏，无 Vulkan 回 `renderUnavailable`，不兜底 CPU）。
+avoxkit 侧 `ak_probe`/`ak_index`/`ak_frames`/`ak_engine` 已全部切到新接口；
+录屏混音/封装改走 `IMediaComposer`（`avox/AvoxCapture.h`），本仓已无任何
+libav include，CMake 摘掉了 avformat/avcodec/avutil/swresample 链接。
 以 avox 仓 `src/avox/AvoxMedia.h` 为最终接口口径，本文保留设计过程与决策记录。
 
 目标：把 avoxkit 里直连 FFmpeg 的探测、索引、抓帧收回 avox，
@@ -11,7 +13,8 @@ avoxkit 侧 `ak_probe`/`ak_index`/`ak_engine` 已切到新接口并通过 170 �
 
 ## 1. 背景
 
-avoxkit 的 `native/avtool` 目前有三处直接使用 libav：
+迁移前 avoxkit 的 `native/avtool` 有三处直接使用 libav（现已全部收回；
+录屏混音模块 `ak_media_audio.cpp` 后来也切到了 avox `IMediaComposer`，不在本文范围）：
 
 | 模块 | 现在做什么 | 直接依赖 |
 |---|---|---|
@@ -333,10 +336,9 @@ virtual bool isDefault() const { return false; }
 - **HDR**：`setHdrMode(HdrMode::follow)` + 默认 tone map，HDR→SDR；不支持
   `forceHDR`（16f 输出，`fetchData` 也会拒绝，不适合 RGBA8 抓帧）。
 - **旋转**：只处理容器 display matrix 声明的 90/180/270；0° 文件完全不动。手机竖拍
-  视频的编码画面是横的，容器靠矩阵声明播放时转 90°，不转缩略图会横躺；当前
-  `ak_frames` 已经这么做，迁移后必须保留。v1 在缩图后对 320 宽的 RGBA 做 CPU 旋转；
-  若播放端也要自动旋正，再给 `VkVideoRender` 补 transpose 层（`TransposeParamet`
-  已有），这是另一个改动。旋转是 avox 内部语义，avoxkit 不读 rotation、不二次旋转，
+  视频的编码画面是横的，容器靠矩阵声明播放时转 90°，不转缩略图会横躺。transpose
+  定稿在渲染入口一次性处理（avox `a62f0ab`），抓帧/预览直接出显示方向画面，不再
+  做二次 CPU 旋转。旋转是 avox 内部语义，avoxkit 不读 rotation、不二次旋转，
   只消费回调里的 JPEG/RGBA 和 width/height。
 - **Vulkan 要求**：抓帧必须走 Vulkan；无 Vulkan 返回 `renderUnavailable`，不保留
   CPU 兜底。`ak_capabilities_json` 增加 `vulkan` 字段，UI 显示

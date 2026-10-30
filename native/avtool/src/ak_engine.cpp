@@ -21,12 +21,12 @@ namespace ak {
 namespace {
 
 int32_t self_check(std::string& detail) {
-  const avox::FFmpegRuntimeInfo runtime = avox::getFFmpegRuntimeInfo();
-  if (!runtime.buildConfig) {
+  const char* build_config = avox::getFFmpegBuildConfig();
+  if (!build_config) {
     detail = "avcodec_configuration() returned null";
     return AK_E_FFMPEG_MISMATCH;
   }
-  if (!std::strstr(runtime.buildConfig, "--enable-libmp3lame")) {
+  if (!std::strstr(build_config, "--enable-libmp3lame")) {
     detail = "running avcodec was not built with --enable-libmp3lame";
     return AK_E_FFMPEG_MISMATCH;
   }
@@ -38,7 +38,8 @@ int32_t self_check(std::string& detail) {
     detail = "aac encoder is not registered";
     return AK_E_FFMPEG_MISMATCH;
   }
-  if ((runtime.avformatVersion >> 16) != 63) {
+  const avox::FFmpegVersionInfo ffmpeg_version = avox::getFFmpegVersionInfo();
+  if ((ffmpeg_version.avformatVersion >> 16) != 63) {
     detail = "avformat major version mismatch (expected 63)";
     return AK_E_FFMPEG_MISMATCH;
   }
@@ -177,6 +178,10 @@ void shutdown_engine() {
     return;
   }
   log(LogLevel::info, "shutdown begin");
+  capture_shutdown();
+  log(LogLevel::info, "shutdown: capture_shutdown done");
+  project_shutdown();
+  log(LogLevel::info, "shutdown: project_shutdown done");
   task_stop();
   log(LogLevel::info, "shutdown: task_stop done");
   preview_shutdown();
@@ -204,16 +209,19 @@ std::string make_version_json() {
                {"build_time", AVOX_BUILD_TIME},
                {"dll_dir", run_dir ? run_dir : ""}};
 
-  const avox::FFmpegRuntimeInfo runtime = avox::getFFmpegRuntimeInfo();
+  const avox::FFmpegVersionInfo ffmpeg_version = avox::getFFmpegVersionInfo();
+  const char* ffmpeg_version_text = avox::getFFmpegVersion();
+  const char* ffmpeg_build_config = avox::getFFmpegBuildConfig();
   const bool has_libmp3lame =
-      runtime.buildConfig && std::strstr(runtime.buildConfig,
-                                         "--enable-libmp3lame") != nullptr;
+      ffmpeg_build_config &&
+      std::strstr(ffmpeg_build_config, "--enable-libmp3lame") != nullptr;
   j["ffmpeg"] = {
-      {"version", runtime.version ? runtime.version : ""},
-      {"avcodec", runtime.avcodecVersion},
-      {"avformat", runtime.avformatVersion},
-      {"avutil", runtime.avutilVersion},
-      {"config_fnv1a", fnv1a_hex(runtime.buildConfig ? runtime.buildConfig : "")},
+      {"version", ffmpeg_version_text ? ffmpeg_version_text : ""},
+      {"avcodec", ffmpeg_version.avcodecVersion},
+      {"avformat", ffmpeg_version.avformatVersion},
+      {"avutil", ffmpeg_version.avutilVersion},
+      {"config_fnv1a",
+       fnv1a_hex(ffmpeg_build_config ? ffmpeg_build_config : "")},
       {"has_libmp3lame", has_libmp3lame}};
 
 #if defined(_WIN32)
@@ -258,15 +266,18 @@ std::string make_capabilities_json() {
     }
   }
 
-  const avox::FFmpegRuntimeInfo runtime = avox::getFFmpegRuntimeInfo();
+  const avox::FFmpegVersionInfo ffmpeg_version = avox::getFFmpegVersionInfo();
+  const char* ffmpeg_version_text = avox::getFFmpegVersion();
+  const char* ffmpeg_build_config = avox::getFFmpegBuildConfig();
   const bool has_libmp3lame =
-      runtime.buildConfig && std::strstr(runtime.buildConfig,
-                                         "--enable-libmp3lame") != nullptr;
+      ffmpeg_build_config &&
+      std::strstr(ffmpeg_build_config, "--enable-libmp3lame") != nullptr;
   nlohmann::json j;
   j["probed_at_ms"] = now_ms();
   j["ffmpeg"] = {
-      {"version", runtime.version ? runtime.version : ""},
-      {"config_fnv1a", fnv1a_hex(runtime.buildConfig ? runtime.buildConfig : "")},
+      {"version", ffmpeg_version_text ? ffmpeg_version_text : ""},
+      {"config_fnv1a",
+       fnv1a_hex(ffmpeg_build_config ? ffmpeg_build_config : "")},
       {"has_libmp3lame", has_libmp3lame}};
   j["vulkan"] = avox::isVulkanAvailable();
   j["encoders"] = {

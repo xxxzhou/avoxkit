@@ -12,12 +12,14 @@ class MediaFrame {
 }
 
 /// 一次抓帧的结果。frames 为空不一定失败: 无视频轨/像素格式不支持也会返回空。
+/// [reason] 是失败原因码(如 render_unavailable / unsupported_pix_fmt), 用于 UI 提示。
 class MediaFrames {
   const MediaFrames({
     required this.width,
     required this.height,
     required this.frames,
     this.hasVideo = true,
+    this.reason = '',
   });
 
   factory MediaFrames.fromJson(Map<String, dynamic> json) {
@@ -45,6 +47,7 @@ class MediaFrames {
       height: (json['height'] as num?)?.toInt() ?? 0,
       frames: frames,
       hasVideo: json['has_video'] != false,
+      reason: json['reason'] as String? ?? '',
     );
   }
 
@@ -52,8 +55,24 @@ class MediaFrames {
   final int height;
   final List<MediaFrame> frames;
   final bool hasVideo;
+  final String reason;
 
   bool get isEmpty => frames.isEmpty;
+
+  /// 画面预览不可用的人话提示; 可用或未知原因返回 null
+  String? get unavailableHint {
+    if (!hasVideo) {
+      return null;
+    }
+    switch (reason) {
+      case 'render_unavailable':
+        return 'Vulkan 组件未启用，缩略图/画面预览不可用';
+      case 'unsupported_pix_fmt':
+        return '该视频的像素格式不支持画面预览';
+      default:
+        return null;
+    }
+  }
 }
 
 /// 缩略图条张数: 每约 76px 一张, 6-24 张, 跟着面板宽度走。
