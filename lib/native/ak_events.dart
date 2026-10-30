@@ -29,6 +29,9 @@ class AkEvent {
         output = path;
       }
     }
+    // 任务错误码是字符串, 录屏错误码是数字, 都要能读
+    final rawCode = json['code'];
+    final code = rawCode is String ? rawCode : rawCode?.toString();
     List<int>? peaks;
     final rawPeaks = json['peaks'];
     if (rawPeaks is List) {
@@ -43,7 +46,7 @@ class AkEvent {
       pct: (json['pct'] as num?)?.toDouble(),
       currentMs: (json['current_ms'] as num?)?.toInt(),
       totalMs: (json['total_ms'] as num?)?.toInt(),
-      code: json['code'] as String?,
+      code: code,
       message: json['message'] as String?,
       detail: json['detail'] as String?,
       hint: json['hint'] as String?,

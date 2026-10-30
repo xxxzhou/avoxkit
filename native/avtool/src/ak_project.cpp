@@ -223,6 +223,17 @@ struct Click {
   int32_t y = 0;
 };
 
+// 旧遥测把 inside 写成 0/1, 新遥测写 bool; 两种都认, 不能让 value<bool> 抛异常
+bool json_flag(const json& value, bool fallback) {
+  if (value.is_boolean()) {
+    return value.get<bool>();
+  }
+  if (value.is_number()) {
+    return value.get<double>() != 0.0;
+  }
+  return fallback;
+}
+
 struct ShapeInfo {
   int id = 0;
   std::string file;
@@ -439,7 +450,8 @@ class ExportRunner {
         seg.h = rect[3].get<float>();
         seg.easeIn = s.value("easeIn", 0);
         seg.easeOut = s.value("easeOut", 0);
-        seg.follow = s.value("follow", 0) ? 1 : 0;
+        seg.follow =
+            s.contains("follow") && json_flag(s["follow"], false) ? 1 : 0;
         if (seg.w < 2.0f || seg.h < 2.0f) {
           continue;
         }
@@ -457,7 +469,9 @@ class ExportRunner {
     const json events = read_json_file(data_.dir + "/events.json");
     if (events.is_object() && events["clicks"].is_array()) {
       for (const auto& c : events["clicks"]) {
-        if (!c.value("inside", true)) {
+        const bool inside =
+            c.contains("inside") ? json_flag(c["inside"], true) : true;
+        if (!inside) {
           continue;
         }
         Click click;
@@ -894,6 +908,32 @@ extern "C" const char* ak_project_open(const char* request_json) {
   return ak::dup_cstr(out.dump());
 }
 
+// 导出线程漏出去的异常会被 std::terminate 变成整进程 abort; 统一转 failed。
+void export_crashed(const std::shared_ptr<ExportJob>& job, int64_t projectId,
+                    int64_t exportId, const char* what) {
+  const std::string message =
+      std::string("export failed: ") + (what ? what : "");
+  job->state = 3;
+  {
+    std::lock_guard<std::mutex> lock(job->mtx);
+    job->stage = "failed";
+    job->error = message;
+  }
+  ak::log(ak::LogLevel::error, "project: " + message);
+  json ev = {{"type", "event"},
+             {"kind", "project_error"},
+             {"project_id", projectId},
+             {"export_id", exportId},
+             {"code", "export_exception"},
+             {"message", message}};
+  ak::event_post(ev.dump());
+  JobData meta;
+  meta.projectId = projectId;
+  meta.exportId = exportId;
+  meta.outPath = job->outPath;
+  post_state(meta, job, "failed");
+}
+
 extern "C" const char* ak_project_set(int64_t project_id,
                                       const char* patch_json) {
   json patch = json::parse(patch_json ? patch_json : "{}", nullptr, false);
@@ -993,10 +1033,19 @@ extern "C" const char* ak_project_export(int64_t project_id,
     std::lock_guard<std::mutex> lock(g_projMtx);
     project->job = job;
   }
-  job->thread = std::thread([data, job]() mutable {
-    ExportRunner runner(std::move(data), job);
-    runner.run();
-  });
+  const int64_t jobProjectId = data.projectId;
+  const int64_t jobExportId = job->id;
+  job->thread = std::thread(
+      [data, job, jobProjectId, jobExportId]() mutable {
+        try {
+          ExportRunner runner(std::move(data), job);
+          runner.run();
+        } catch (const std::exception& e) {
+          export_crashed(job, jobProjectId, jobExportId, e.what());
+        } catch (...) {
+          export_crashed(job, jobProjectId, jobExportId, "unknown exception");
+        }
+      });
   return ak::dup_cstr(
       json({{"ok", true}, {"export_id", job->id}}).dump());
 }

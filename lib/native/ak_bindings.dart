@@ -164,9 +164,7 @@ class AkBindings {
         'ak_encoder_probe',
       );
   late final _AkImageDetectDart _imageDetect = _lib
-      .lookupFunction<_AkImageDetectC, _AkImageDetectDart>(
-        'ak_image_detect',
-      );
+      .lookupFunction<_AkImageDetectC, _AkImageDetectDart>('ak_image_detect');
   late final _AkPreviewOpenDart _previewOpen = _lib
       .lookupFunction<_AkPreviewOpenC, _AkPreviewOpenDart>('ak_preview_open');
   late final _AkPreviewBindDart _previewBind = _lib
@@ -270,6 +268,10 @@ class AkBindings {
       .lookupFunction<_AkCaptureIdRcC, _AkCaptureIdRcD>('ak_capture_resume');
   late final _AkCaptureIdD _captureStop = _lib
       .lookupFunction<_AkCaptureIdC, _AkCaptureIdD>('ak_capture_stop');
+  late final _AkCaptureStartD _captureFinalize = _lib
+      .lookupFunction<_AkCaptureStartC, _AkCaptureStartD>(
+        'ak_capture_finalize',
+      );
 
   String captureDevicesJson() => _take(_captureDevices(), _freeString);
 
@@ -292,6 +294,15 @@ class AkBindings {
   String captureStop(int sessionId) =>
       _take(_captureStop(sessionId), _freeString);
 
+  String captureFinalize(String requestJson) {
+    final pointer = requestJson.toNativeUtf8();
+    try {
+      return _take(_captureFinalize(pointer), _freeString);
+    } finally {
+      malloc.free(pointer);
+    }
+  }
+
   // ---- 录屏工程 ----
   late final _AkCaptureStartD _projectOpen = _lib
       .lookupFunction<_AkCaptureStartC, _AkCaptureStartD>('ak_project_open');
@@ -302,7 +313,9 @@ class AkBindings {
   late final _AkCaptureIdD _projectStatus = _lib
       .lookupFunction<_AkCaptureIdC, _AkCaptureIdD>('ak_project_status');
   late final _AkProjectCloseDart _projectClose = _lib
-      .lookupFunction<_AkProjectCloseC, _AkProjectCloseDart>('ak_project_close');
+      .lookupFunction<_AkProjectCloseC, _AkProjectCloseDart>(
+        'ak_project_close',
+      );
 
   String projectOpen(String requestJson) {
     final pointer = requestJson.toNativeUtf8();

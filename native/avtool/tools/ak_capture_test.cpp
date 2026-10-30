@@ -1,13 +1,18 @@
 // 录屏整链无头测试: 采集 -> finalize -> 工程导出。
-// 用法: ak_capture_test <work_dir> [seconds] [--audio]
-// 强制 GDI 采集道(环境案: WGC 对 IDD 虚拟屏恒黑), 只验证工程链不验证 WGC 内容。
+// 用法: ak_capture_test <work_dir> [seconds] [--audio] [--fps=N] [--region=WxH]
+// 采集走 WGC 默认道; 抽 screen.mkv 帧看亮度即可判黑帧(上传 box 的 front/back 必须有效)。
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
+#include <fstream>
 #include <string>
 #include <thread>
 
 #include <nlohmann/json.hpp>
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 #include "ak.h"
 
@@ -30,10 +35,24 @@ int main(int argc, char** argv) {
   std::fprintf(stderr, "step: args\n");
   const std::string root = argc > 1 ? argv[1] : "D:/tmp/ak_capture_test";
   const int seconds = argc > 2 ? std::max(2, std::atoi(argv[2])) : 4;
-  const bool audio = argc > 3 && std::string(argv[3]) == "--audio";
-#ifdef _WIN32
-  _putenv_s("AVOX_CAPTURE_GDI", "1");
-#endif
+  bool audio = false;
+  double fps = 30.0;
+  int regionW = 0;
+  int regionH = 0;
+  for (int i = 3; i < argc; i++) {
+    const std::string arg = argv[i];
+    audio = audio || arg == "--audio";
+    if (arg.rfind("--fps=", 0) == 0) {
+      fps = std::atof(arg.c_str() + 6);
+    }
+    if (arg.rfind("--region=", 0) == 0) {
+      // 区域从显示器左上起, 与 UI 的自定义区域一致
+      if (std::sscanf(arg.c_str() + 9, "%dx%d", &regionW, &regionH) != 2) {
+        regionW = 0;
+        regionH = 0;
+      }
+    }
+  }
   const std::string work = root + "/work";
   const std::string config = json({{"work_dir", work},
                                    {"log_level", "info"}})
@@ -61,10 +80,12 @@ int main(int argc, char** argv) {
   const std::string outDir = root + "/capture";
   json request = {{"out_dir", outDir},
                   {"monitor_id", monitor["id"]},
-                  {"fps", 30.0},
+                  {"fps", fps},
                   {"cursor", false},
                   {"mic", audio},
-                  {"loop", audio}};
+                  {"loop", audio},
+                  {"region_w", regionW},
+                  {"region_h", regionH}};
   json start = json::parse(take_free(ak_capture_start(request.dump().c_str())));
   std::printf("start: %s\n", start.dump(2).c_str());
   if (start.value("ok", false) != true) {
@@ -85,11 +106,36 @@ int main(int argc, char** argv) {
     return 1;
   }
   const std::string dir = stop.value("dir", "");
-  if (stop.contains("capture")) {
-    const std::string capture = stop["capture"].get<std::string>();
+  std::fprintf(stderr, "step: finalize\n");
+  json fin = json::parse(
+      take_free(ak_capture_finalize(json({{"dir", dir}}).dump().c_str())));
+  std::printf("finalize: %s\n", fin.dump(2).c_str());
+  if (!fin.value("ok", false)) {
+    ak_shutdown();
+    return 1;
+  }
+  if (fin.contains("capture")) {
+    const std::string capture = fin["capture"].get<std::string>();
     std::fprintf(stderr, "step: probe capture\n");
     std::printf("probe capture: %s\n",
                 take_free(ak_probe(capture.c_str())).c_str());
+  }
+  // 回归: 点击事件的 inside 历史版本是 0/1 数字, 新版本是 bool, 两种都要能读
+  {
+    nlohmann::json events = {
+        {"clicks", nlohmann::json::array({{{"t", 1000},
+                                            {"x", 100},
+                                            {"y", 100},
+                                            {"inside", 1},
+                                            {"button", "left"}},
+                                           {{"t", 2000},
+                                            {"x", 200},
+                                            {"y", 200},
+                                            {"inside", true},
+                                            {"button", "left"}}})},
+        {"jumps", nlohmann::json::array()},
+        {"pauses", nlohmann::json::array()}};
+    std::ofstream(dir + "/events.json") << events.dump(2);
   }
   std::fprintf(stderr, "step: project open\n");
   json opened = json::parse(take_free(ak_project_open(

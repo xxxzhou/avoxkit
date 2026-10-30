@@ -195,8 +195,11 @@ void CursorTelemetry::stop() {
                    {"jumps", json::array()},
                    {"pauses", json::array()}};
     for (const auto& c : clicks_) {
-      events["clicks"].push_back({{"t", c.t}, {"x", c.x}, {"y", c.y},
-                                  {"inside", c.inside}, {"button", c.button}});
+      events["clicks"].push_back({{"t", c.t},
+                                  {"x", c.x},
+                                  {"y", c.y},
+                                  {"inside", c.inside != 0},
+                                  {"button", c.button}});
     }
     for (const auto& j : jumps_) {
       events["jumps"].push_back({{"t", j.t}, {"x", j.x}, {"y", j.y}});

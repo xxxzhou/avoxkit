@@ -1,10 +1,16 @@
 #include "ak_internal.hpp"
 
+#include <cstdlib>
 #include <cstring>
+#include <exception>
 #include <filesystem>
 #include <set>
 #include <string>
 #include <vector>
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 #include <nlohmann/json.hpp>
 
@@ -19,6 +25,103 @@
 
 namespace ak {
 namespace {
+
+#ifdef _WIN32
+// 崩溃线程的栈扫描: 只取落在已加载模块内的返回地址, 无符号也能看出调用链
+void log_crash_stack(EXCEPTION_POINTERS* info) {
+  CONTEXT* ctx = info ? info->ContextRecord : nullptr;
+  if (!ctx) {
+    return;
+  }
+  char text[2400] = {};
+  int used = _snprintf_s(text, sizeof(text), _TRUNCATE,
+                         "crash stack: tid=%lu rip=%p rsp=%p rbp=%p",
+                         GetCurrentThreadId(), (void*)ctx->Rip,
+                         (void*)ctx->Rsp, (void*)ctx->Rbp);
+  if (used <= 0) {
+    return;
+  }
+  const uint8_t* sp = (const uint8_t*)ctx->Rsp;
+  int hits = 0;
+  for (size_t i = 0; i < 0x4000 / sizeof(uintptr_t) && hits < 24; i++) {
+    const uint8_t* p = sp + i * sizeof(uintptr_t);
+    MEMORY_BASIC_INFORMATION mbi = {};
+    if (VirtualQuery(p, &mbi, sizeof(mbi)) == 0) {
+      break;
+    }
+    if (mbi.State != MEM_COMMIT ||
+        (mbi.Protect & (PAGE_NOACCESS | PAGE_GUARD))) {
+      const uint8_t* end = (const uint8_t*)mbi.BaseAddress + mbi.RegionSize;
+      if (end <= p) {
+        break;
+      }
+      i = (size_t)((end - sp) / sizeof(uintptr_t));
+      continue;
+    }
+    const uintptr_t value = *(const uintptr_t*)p;
+    HMODULE module = nullptr;
+    if (!value ||
+        !GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                                GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                            (LPCSTR)value, &module)) {
+      continue;
+    }
+    char path[MAX_PATH] = {};
+    GetModuleFileNameA(module, path, sizeof(path));
+    const char* name = std::strrchr(path, '\\');
+    name = name ? name + 1 : path;
+    const int n = _snprintf_s(
+        text + used, sizeof(text) - used, _TRUNCATE, "\n  [%d] %s+0x%llX",
+        hits, name, (unsigned long long)(value - (uintptr_t)module));
+    if (n <= 0) {
+      break;
+    }
+    used += n;
+    hits++;
+  }
+  log(LogLevel::error, text);
+}
+
+// 崩溃现场落日志(WER 不一定留事件): 异常码 + 模块 + 偏移 + 栈, 便于按 .map 定位
+LONG WINAPI crash_filter(EXCEPTION_POINTERS* info) {
+  DWORD code = 0;
+  void* address = nullptr;
+  if (info && info->ExceptionRecord) {
+    code = info->ExceptionRecord->ExceptionCode;
+    address = info->ExceptionRecord->ExceptionAddress;
+  }
+  char module_path[MAX_PATH] = {};
+  unsigned long long offset = 0;
+  HMODULE module = nullptr;
+  if (address &&
+      GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                             GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                         static_cast<LPCSTR>(address), &module)) {
+    GetModuleFileNameA(module, module_path, sizeof(module_path));
+    offset = reinterpret_cast<unsigned long long>(address) -
+             reinterpret_cast<unsigned long long>(module);
+  }
+  char text[600] = {};
+  _snprintf_s(text, sizeof(text), _TRUNCATE,
+              "crash: code=0x%08lX module=%s offset=0x%llX address=%p", code,
+              module_path, offset, address);
+  log(LogLevel::error, text);
+  log_crash_stack(info);
+  return EXCEPTION_CONTINUE_SEARCH;
+}
+
+void install_crash_hooks() {
+  static const bool done = []() {
+    SetUnhandledExceptionFilter(crash_filter);
+    std::set_terminate([] {
+      log(LogLevel::error, "crash: std::terminate");
+      std::abort();
+    });
+    return true;
+  }();
+  (void)done;
+}
+#endif
 
 int32_t self_check(std::string& detail) {
   const char* build_config = avox::getFFmpegBuildConfig();
@@ -145,6 +248,9 @@ int32_t init_engine(const char* config_json) {
   }
   const auto log_path = logs / ("avoxkit-" + date_stamp() + ".log");
   log_set_file(log_path.u8string(), config.log_level);
+#ifdef _WIN32
+  install_crash_hooks();
+#endif
 
   avox::setLogAction(avox_log_bridge);
   avox::logMsg(avox::LogLevel::info, "avox log bridge attached");

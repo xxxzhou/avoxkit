@@ -49,7 +49,7 @@
 与 avox 的分层模式是「Flutter + FFI + C shim + 引擎」；本仓代码自建。
 avox 没有官方 C 导出层, 因此本仓 native 层负责任务/事件/参数边界。
 
-## 2. `ak_*` C ABI(v1，当前 minor 8)
+## 2. `ak_*` C ABI(v1，当前 minor 9)
 
 > 早期草案: ABI v1 的函数面、事件所有权(`ak_event_free`)、`ak_init(config_json)`、
 > 能力探测与版本协商以 `docs/functional-architecture.md` §5 为准。
@@ -96,13 +96,16 @@ int         ak_preview_unbind(void);
 int         ak_preview_rect(double x, double y, double w, double h);
 int         ak_preview_close(void);
 
-// 录屏会话(v1.7): 多输入=多文件; 停止时 finalize(混音 + remux + project.json)
+// 录屏会话(v1.7): 多输入=多文件; 停止只落盘, 收尾单独调用(v1.9)
 const char* ak_capture_devices_json(void);
 const char* ak_capture_start(const char* request_json);
 const char* ak_capture_status(int64_t session_id);
 int         ak_capture_pause(int64_t session_id);
 int         ak_capture_resume(int64_t session_id);
+// 会话状态在 native 内, 必须由创建会话的线程/isolate 调; 只回填 WAV/写 session.json
 const char* ak_capture_stop(int64_t session_id);
+// 收尾已停止目录(只读文件, 任意 isolate 可调): 混音 + remux + project.json
+const char* ak_capture_finalize(const char* request_json);
 
 // 录屏工程(v1.8): 场景包装 + 裁剪区间 + 导出 MP4
 const char* ak_project_open(const char* request_json);

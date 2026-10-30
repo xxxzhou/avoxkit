@@ -51,6 +51,7 @@ class _RecordPageState extends State<RecordPage> {
   String? _sessionDir;
   int? _projectId;
   Timer? _exportTimer;
+  bool _finalizing = false;
   bool _exporting = false;
   int _exportPct = 0;
   String _exportStage = '';
@@ -79,8 +80,9 @@ class _RecordPageState extends State<RecordPage> {
 
   Future<void> _loadDevices() async {
     try {
-      final json = jsonDecode(widget.engine.bindings.captureDevicesJson())
-          as Map<String, dynamic>;
+      final json = jsonDecode(
+        widget.engine.bindings.captureDevicesJson(),
+      ) as Map<String, dynamic>;
       final monitors = (json['monitors'] as List? ?? [])
           .whereType<Map>()
           .map((e) => Map<String, dynamic>.from(e))
@@ -105,6 +107,14 @@ class _RecordPageState extends State<RecordPage> {
     }
   }
 
+  // 静态入口: 实例方法里创建的闭包会把 State(含 Timer) 一起捕获,
+  // Isolate.run 发送时报 "object is unsendable"。
+  static Future<String> _finalizeInIsolate(String request) =>
+      Isolate.run(() => _captureFinalize(request));
+
+  static String _captureFinalize(String request) =>
+      AkBindings.open().captureFinalize(request);
+
   void _startPolling() {
     _poll?.cancel();
     _poll = Timer.periodic(const Duration(milliseconds: 500), (_) {
@@ -113,10 +123,18 @@ class _RecordPageState extends State<RecordPage> {
         return;
       }
       try {
-        final json =
-            jsonDecode(widget.engine.bindings.captureStatus(id))
-                as Map<String, dynamic>;
+        final json = jsonDecode(
+          widget.engine.bindings.captureStatus(id),
+        ) as Map<String, dynamic>;
         if (json['ok'] != true) {
+          // 会话已消失(被关闭/收尾): 界面回到就绪, 不再显示停止按钮
+          if (json['code'] == -10) {
+            _poll?.cancel();
+            setState(() {
+              _sessionId = null;
+              _state = 'stopped';
+            });
+          }
           return;
         }
         setState(() {
@@ -139,6 +157,9 @@ class _RecordPageState extends State<RecordPage> {
   }
 
   Future<void> _start() async {
+    if (_finalizing) {
+      return;
+    }
     final monitor = _monitorId;
     if (monitor == null) {
       setState(() => _error = '没有可用的显示器采集设备');
@@ -169,9 +190,9 @@ class _RecordPageState extends State<RecordPage> {
       'region_h': regionH,
     });
     try {
-      final json =
-          jsonDecode(widget.engine.bindings.captureStart(request))
-              as Map<String, dynamic>;
+      final json = jsonDecode(
+        widget.engine.bindings.captureStart(request),
+      ) as Map<String, dynamic>;
       if (json['ok'] != true) {
         setState(() => _error = '录制启动失败（代码 ${json['code']}）');
         return;
@@ -216,66 +237,107 @@ class _RecordPageState extends State<RecordPage> {
       _error = null;
       _lastResult = null;
     });
+    // 会话状态跟着创建它的 isolate, stop 只回填/关文件, 必须留在主 isolate;
+    // 混音+remux 只读文件, 放后台 isolate 才不卡长录制的 UI。
+    Map<String, dynamic> stopped;
     try {
-      // finalize 会做混音 + remux, 长录制可能数秒; 放 isolate 避免卡 UI
-      final raw = await Isolate.run(() {
-        final bindings = AkBindings.open();
-        return bindings.captureStop(id);
-      });
-      final json = jsonDecode(raw) as Map<String, dynamic>;
-      setState(() {
-        _sessionId = null;
-        _state = 'stopped';
-        if (json['ok'] == true) {
-          final dir = json['dir'] as String?;
-          final capture = json['capture'] as String?;
-          final project = json['project'] as String?;
-          final durationMs = (json['duration_ms'] as num?)?.toInt() ?? 0;
-          final videos = (json['videos'] as List? ?? [])
-              .whereType<String>()
-              .toList();
-          final audios = (json['audios'] as List? ?? [])
-              .whereType<String>()
-              .toList();
-          _sessionDir = dir;
-          _projectId = null;
-          _exportOut = null;
-          final buffer = StringBuffer();
-          if (dir != null) {
-            buffer.write('输出目录: $dir');
-          }
-          if (durationMs > 0) {
-            buffer.write(
-                '\n时长: ${(durationMs / 1000).toStringAsFixed(1)} 秒');
-          }
-          if (capture != null) {
-            buffer.write('\n成片预览: $capture');
-          }
-          if (project != null) {
-            buffer.write('\n工程: $project');
-          }
-          if (videos.isNotEmpty) {
-            buffer.write('\n视频: ${videos.join('\n')}');
-          }
-          if (audios.isNotEmpty) {
-            buffer.write('\n音频: ${audios.join('\n')}');
-          }
-          final finalizeError = json['finalize_error'];
-          if (finalizeError != null) {
-            buffer.write('\n整理失败: $finalizeError');
-          }
-          _lastResult = buffer.toString();
-        } else {
-          _error = '停止失败（代码 ${json['code']}）';
-        }
-      });
+      stopped = jsonDecode(
+        widget.engine.bindings.captureStop(id),
+      ) as Map<String, dynamic>;
     } catch (error) {
+      // 保留会话 id 和轮询, 让用户能再点一次停止
       setState(() {
-        _sessionId = null;
-        _state = 'stopped';
-        _error = '停止失败: $error';
+        _state = 'recording';
+        _error = '停止录制失败: $error';
       });
+      _startPolling();
+      return;
     }
+    if (stopped['ok'] != true) {
+      setState(() {
+        _state = 'recording';
+        _error =
+            '停止录制失败（代码 ${stopped['code']}）；录制可能仍在继续，'
+            '可再点一次停止';
+      });
+      _startPolling();
+      return;
+    }
+    final dir = stopped['dir'] as String?;
+    setState(() {
+      _sessionId = null;
+      _state = 'finalizing';
+      _finalizing = true;
+    });
+    if (dir == null) {
+      setState(() {
+        _finalizing = false;
+        _state = 'stopped';
+      });
+      return;
+    }
+    final request = jsonEncode({'dir': dir, 'via': 'isolate'});
+    Map<String, dynamic> fin;
+    try {
+      fin =
+          jsonDecode(await _finalizeInIsolate(request)) as Map<String, dynamic>;
+    } catch (error) {
+      fin = {'ok': false, 'error': '$error'};
+    }
+    if (fin['ok'] != true) {
+      // 后台 isolate 打不开库/未初始化时退回主 isolate; finalize 只读文件可重入
+      final reason = '${fin['error'] ?? '代码 ${fin['code']}'}';
+      try {
+        fin = jsonDecode(
+          widget.engine.bindings.captureFinalize(
+            jsonEncode({'dir': dir, 'via': 'host', 'isolate_error': reason}),
+          ),
+        ) as Map<String, dynamic>;
+      } catch (_) {
+        fin = {'ok': false, 'error': reason};
+      }
+    }
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _finalizing = false;
+      _state = 'stopped';
+      final ok = fin['ok'] == true;
+      _sessionDir = ok ? dir : null;
+      _projectId = null;
+      _exportOut = null;
+      final durationMs = (fin['duration_ms'] as num?)?.toInt() ?? 0;
+      final videos = (stopped['videos'] as List? ?? [])
+          .whereType<String>()
+          .toList();
+      final audios = (stopped['audios'] as List? ?? [])
+          .whereType<String>()
+          .toList();
+      final buffer = StringBuffer('输出目录: $dir');
+      if (durationMs > 0) {
+        buffer.write('\n时长: ${(durationMs / 1000).toStringAsFixed(1)} 秒');
+      }
+      final capture = fin['capture'] as String?;
+      if (capture != null) {
+        buffer.write('\n成片预览: $capture');
+      }
+      final project = fin['project'] as String?;
+      if (project != null) {
+        buffer.write('\n工程: $project');
+      }
+      if (audios.isNotEmpty) {
+        buffer.write('\n音频: ${audios.join('\n')}');
+      }
+      if (videos.isNotEmpty) {
+        buffer.write('\n原始视频: ${videos.join('\n')}');
+      }
+      _lastResult = buffer.toString();
+      if (!ok) {
+        final reason = fin['error'] ?? '代码 ${fin['code']}';
+        _error = '整理成片失败（素材已保存）: $reason';
+      }
+    });
   }
 
   Future<void> _export() async {
@@ -314,7 +376,7 @@ class _RecordPageState extends State<RecordPage> {
           jsonEncode({
             'out_path': location.path,
             'overwrite': true,
-            'fps': 30,
+            // 输出帧率跟源(引擎按解码帧推进), 这里不传 fps 避免假承诺
             'quality': 65,
           }),
         ),
@@ -345,9 +407,7 @@ class _RecordPageState extends State<RecordPage> {
             _exportPct = (status['pct'] as num?)?.toInt() ?? 0;
             _exportStage = status['stage'] as String? ?? '';
           });
-          if (state == 'done' ||
-              state == 'failed' ||
-              state == 'cancelled') {
+          if (state == 'done' || state == 'failed' || state == 'cancelled') {
             timer.cancel();
             widget.engine.bindings.projectClose(id);
             _projectId = null;
@@ -408,7 +468,8 @@ class _RecordPageState extends State<RecordPage> {
         children: [
           const PageHeader(
             title: '录屏',
-            description: '把显示器画面连同系统声音/麦克风录成视频文件，'
+            description:
+                '把显示器画面连同系统声音/麦克风录成视频文件，'
                 '本地处理，不上传。',
           ),
           const SizedBox(height: 24),
@@ -427,14 +488,16 @@ class _RecordPageState extends State<RecordPage> {
                       label: '显示器',
                       value: _monitorId,
                       items: _monitors
-                          .map((m) => DropdownMenuItem(
-                                value: m['id'] as String,
-                                child: Text(
-                                  '${m['name'] ?? m['id']}'
-                                  '（${m['w'] ?? '?'}×${m['h'] ?? '?'}）',
-                                  style: AkText.body,
-                                ),
-                              ))
+                          .map(
+                            (m) => DropdownMenuItem(
+                              value: m['id'] as String,
+                              child: Text(
+                                '${m['name'] ?? m['id']}'
+                                '（${m['w'] ?? '?'}×${m['h'] ?? '?'}）',
+                                style: AkText.body,
+                              ),
+                            ),
+                          )
                           .toList(),
                       onChanged: active
                           ? null
@@ -444,14 +507,19 @@ class _RecordPageState extends State<RecordPage> {
                       label: '帧率',
                       value: _fps,
                       items: const [60.0, 30.0]
-                          .map((v) => DropdownMenuItem(
-                                value: v,
-                                child: Text('${v.toInt()} fps',
-                                    style: AkText.body),
-                              ))
+                          .map(
+                            (v) => DropdownMenuItem(
+                              value: v,
+                              child: Text(
+                                '${v.toInt()} fps',
+                                style: AkText.body,
+                              ),
+                            ),
+                          )
                           .toList(),
-                      onChanged:
-                          active ? null : (v) => setState(() => _fps = v ?? 60),
+                      onChanged: active
+                          ? null
+                          : (v) => setState(() => _fps = v ?? 60),
                     ),
                   ],
                 ),
@@ -460,19 +528,33 @@ class _RecordPageState extends State<RecordPage> {
                   spacing: 24,
                   runSpacing: 8,
                   children: [
-                    _switch('录下系统光标', _cursor, active,
-                        (v) => setState(() => _cursor = v)),
-                    _switch('麦克风', _mic && _hasMic, active && _hasMic,
-                        (v) => setState(() => _mic = v)),
-                    _switch('系统声音', _loop && _hasLoop, active && _hasLoop,
-                        (v) => setState(() => _loop = v)),
+                    _switch(
+                      '录下系统光标',
+                      _cursor,
+                      !active,
+                      (v) => setState(() => _cursor = v),
+                    ),
+                    _switch(
+                      '麦克风',
+                      _mic && _hasMic,
+                      !active && _hasMic,
+                      (v) => setState(() => _mic = v),
+                    ),
+                    _switch(
+                      '系统声音',
+                      _loop && _hasLoop,
+                      !active && _hasLoop,
+                      (v) => setState(() => _loop = v),
+                    ),
                   ],
                 ),
                 if (_mic && !_hasMic)
                   Padding(
                     padding: const EdgeInsets.only(top: 6),
-                    child: Text('没有检测到麦克风，音轨将跳过。',
-                        style: AkText.body.copyWith(color: AkColors.muted)),
+                    child: Text(
+                      '没有检测到麦克风，音轨将跳过。',
+                      style: AkText.body.copyWith(color: AkColors.muted),
+                    ),
                   ),
                 const SizedBox(height: 16),
                 Wrap(
@@ -480,8 +562,12 @@ class _RecordPageState extends State<RecordPage> {
                   runSpacing: 8,
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
-                    _switch('整个屏幕', _fullScreen, active,
-                        (v) => setState(() => _fullScreen = v)),
+                    _switch(
+                      '整个屏幕',
+                      _fullScreen,
+                      active,
+                      (v) => setState(() => _fullScreen = v),
+                    ),
                     if (!_fullScreen)
                       SizedBox(
                         width: 320,
@@ -519,8 +605,10 @@ class _RecordPageState extends State<RecordPage> {
                         ),
                       ),
                     if (!_fullScreen)
-                      Text('从显示器左上角起，偶数像素',
-                          style: AkText.body.copyWith(color: AkColors.muted)),
+                      Text(
+                        '从显示器左上角起，偶数像素',
+                        style: AkText.body.copyWith(color: AkColors.muted),
+                      ),
                   ],
                 ),
                 const SizedBox(height: 16),
@@ -562,32 +650,37 @@ class _RecordPageState extends State<RecordPage> {
                         backgroundColor: active
                             ? AkColors.danger
                             : AkColors.accent,
-                        foregroundColor:
-                            active ? Colors.white : AkColors.accentInk,
+                        foregroundColor: active
+                            ? Colors.white
+                            : AkColors.accentInk,
                       ),
                       onPressed: active
                           ? (_state == 'stopping' ? null : _stop)
-                          : _start,
-                      icon: Icon(active ? Icons.stop : Icons.fiber_manual_record),
+                          : (_finalizing ? null : _start),
+                      icon: Icon(
+                        active ? Icons.stop : Icons.fiber_manual_record,
+                      ),
                       label: Text(active ? '停止录制' : '开始录制'),
                     ),
                     const SizedBox(width: 12),
                     OutlinedButton(
-                      onPressed: active && (_state == 'recording' ||
-                              _state == 'paused')
+                      onPressed:
+                          active &&
+                              (_state == 'recording' || _state == 'paused')
                           ? _pauseResume
                           : null,
-                      child: Text(
-                          _state == 'paused' ? '继续' : '暂停'),
+                      child: Text(_state == 'paused' ? '继续' : '暂停'),
                     ),
                     const SizedBox(width: 24),
                     Text(
                       _state == 'stopping'
+                          ? '状态: 正在停止…'
+                          : _finalizing
                           ? '状态: 整理素材中…'
                           : active
-                              ? '状态: $_state · 已录 '
-                                  '${_clockMs < 0 ? 0 : (_clockMs / 1000).toStringAsFixed(1)}s'
-                              : '状态: 就绪',
+                          ? '状态: $_state · 已录 '
+                                '${_clockMs < 0 ? 0 : (_clockMs / 1000).toStringAsFixed(1)}s'
+                          : '状态: 就绪',
                       style: AkText.body.copyWith(color: AkColors.muted),
                     ),
                   ],
@@ -640,8 +733,10 @@ class _RecordPageState extends State<RecordPage> {
                 ],
                 if (_error != null) ...[
                   const SizedBox(height: 12),
-                  Text(_error!,
-                      style: AkText.body.copyWith(color: AkColors.danger)),
+                  Text(
+                    _error!,
+                    style: AkText.body.copyWith(color: AkColors.danger),
+                  ),
                 ],
               ],
             ),

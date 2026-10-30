@@ -17,6 +17,7 @@
 - `batch_test.dart`：sidecar / mirror / flat 命名，逐文件扩展名，已存在跳过。
 - `folder_scan_test.dart`：递归、扩展名过滤、数量上限。
 - `preview_task_test.dart`：组内预览选路（运行中 → 最早排队 → 最后一路）。
+- `task_event_test.dart`：任务事件白名单（录屏/工程导出事件不建任务）。
 - `subtitle_plan_test.dart`：内嵌/识别分流、默认/中文轨优先、图形字幕拒绝、
   无音轨/无字幕错误、params 映射。
 - `model_store_test.dart`：模型清单、分片大小校验、ready 状态、目录自建。
@@ -328,17 +329,29 @@ kit 的 x264/x265 经 `libstdc++-6.dll` 依赖 `libgcc_s_seh-1.dll`。
 cmake --build native/avtool/build --config Release --target ak_capture_test
 native/avtool/build/bin/Release/ak_capture_test.exe <tmp>/ak_cap 5
 native/avtool/build/bin/Release/ak_capture_test.exe <tmp>/ak_cap_audio 5 --audio
+native/avtool/build/bin/Release/ak_capture_test.exe <tmp>/ak_cap_region 3 --region=640x360
 ```
 
 覆盖：
 
-- 显示器采集（30fps）→ `screen.mkv`；停止后 finalize 出 `capture.mkv`
-  （视频 + 混音 AAC）与 `project.json`，并落 `cursor.bin`/`shapes.json`/
-  `events.json`/`session.json`。
-- 工程导出：1280×720 H.264 30fps MP4；背景渐变/留白/圆角/阴影；
+- 显示器采集（30fps）→ `screen.mkv`；`ak_capture_stop` 只落盘（WAV 头/
+  `session.json` + 光标遥测），随后 `ak_capture_finalize` 出 `capture.mkv`
+  （视频 + 混音 AAC）与 `project.json`。
+- UI 侧 stop 必须留在主 isolate（会话状态跟着创建它的 isolate），finalize
+  可放后台 isolate；后台 isolate 打不开原生库时自动退回主 isolate。
+- 工程导出：1280×720 H.264 MP4，帧率跟源（引擎按解码帧推进，请求里的
+  `fps` 只是提示）；背景渐变/留白/圆角/阴影；
   关闭“录下系统光标”时按遥测轨迹重绘光标。
+- 点击事件 `inside` 两种写法都要能读：旧遥测写 0/1，新遥测写 bool；
+  测试工具会注入一条数字、一条 bool 再导出（回归 nlohmann `type_error` 崩溃）。
 - `--audio` 且系统正在播放声音时落 `audio/sys.wav`，混音后进成片；
   系统静音时 WASAPI 回环不产包，成片无音轨属预期。
+- 画面必须有内容：抽 `screen.mkv` 一帧看平均亮度，纯黑说明采集坏了。
+  WGC 帧到 NT 共享纹理必须是 GPU 直拷（`CopySubresourceRegion`）；
+  `D3D11_BOX` 的 `front/back` 必须写成 0/1，漏掉就是空盒，拷贝静默
+  拷 0 字节、整段录屏全黑（2026-10-30 实际踩过，CPU 读回是当时的错误绕路）。
+- 自定义区域（`--region=WxH`，从显示器左上起）：`screen.mkv` 尺寸等于区域，
+  内容非黑；区域 box 与全画面共用同一段拷贝代码，回归时两条都要跑。
 
 检查产物：
 
@@ -347,19 +360,42 @@ ffprobe -v error -show_entries stream=index,codec_type,codec_name,width,height,s
 ffmpeg -ss 1 -i <tmp>/ak_cap/export.mp4 -frames:v 1 <tmp>/frame.png
 ```
 
-2026-10-30 参考结果（2560×1440 采集 → 1280×720 导出）：3s/5s 采集与导出均
-成功；背景、圆角、阴影与内容区边界逐像素核对一致；光标置于 (1280,720) 后
-导出画面中心可见重绘光标；回环播放正弦波时 `sys.wav` 为 `pcm_f32le`
-48k 立体声，混音 AAC 成片 max -35.6 dB。
+2026-10-30 参考结果（2560×1440 采集 → 1280×720 导出）：WGC + GPU 直拷
+2560×1440@60 实测 59.9fps、5s 289 帧、丢弃 0，`screen.mkv` 抽帧亮度 42.1，
+导出成片抽帧亮度 38.7（亮度随屏显内容变化，非 0 即通过）；区域 640×360@30
+实测 29.97fps、丢弃 0、抽帧亮度 40.0（导出 37.4）；背景、圆角、阴影与
+内容区边界逐像素核对一致；光标置于 (1280,720) 后导出画面中心可见重绘光标；
+回环播放正弦波时 `sys.wav` 为 `pcm_f32le` 48k 立体声，混音 AAC 成片 max -35.6 dB。
 
 环境注意：
 
-- 本机向日葵 IDD 虚拟屏接管期间 WGC 恒黑（显示器/窗口目标皆黑），测试用
-  `AVOX_CAPTURE_GDI=1` 强制 GDI 采集道；WGC 内容需物理屏另行验证。
+- 本机 AMD 驱动上 WGC 采屏正常，不需要切 GDI；曾经的「IDD 虚拟屏 WGC 恒黑」
+  是误判（实为空 box 导致拷贝 0 字节），不要按该结论改采集后端。
 - 场景层 shader 必须随包部署：缺 `assets/glsl/scene.comp.spv` 时场景层静默
   禁用，尺寸守卫会把导出帧全丢（表现为导出成功但没有画面）。
 - 远程桌面/虚拟屏下注入鼠标点击不可靠（光标位置被外部环境改写），本环境
   未验证点击事件与涟漪；光标轨迹重绘已验证。
+
+#### 崩溃定位（`flutter_windows.dll+0x3C16A`）
+
+这是 Flutter Windows 引擎的无障碍桥缺陷，不是采集/GPU 链的问题：
+
+- 偏移符号化为 `flutter::AccessibilityBridge::CreateRemoveReparentedNodesUpdate
+  + 0xBA`（`accessibility_bridge.cc:229`）。用 SDK 自带
+  `bin/cache/artifacts/engine/windows-x64-release/flutter_windows.dll.pdb`
+  即可按 RVA 还原。
+- 触发条件：UIA/MSAA 客户端（远程桌面、自动化工具、读屏）在**启动后约 4 秒内**
+  枚举一次界面。桥首次提交拿到的是不完整语义树，把任意节点立成原生根；
+  之后一次 re-parent 更新里该节点 `parent()` 为空，release 下 `assert` 被编译掉，
+  `parent()->id()` 直接崩。空闲或启动 5 秒后再枚举不会触发。
+- 上游状态（2026-10-30）：flutter/flutter#175041 仍 open，PR #190903 未合入；
+  3.47.9 stable 与 master 的该函数都还没补空指针判断。
+- 规避：关于 → 兼容性 → 「关闭无障碍支持」（`ExcludeSemantics` 包住整棵树，
+  实测可避免崩溃；代价是读屏不可用），或设 `AVOXKIT_DISABLE_A11Y=1`。
+  开关写 `<appSupport>/compat.json`，默认关闭（保持无障碍可用）。
+- 在 runner 里拦 `WM_GETOBJECT` 无效（社区已实测，桥仍会建起来），不要走这条路。
+- `ak_engine.cpp` 的崩溃钩子会把异常模块/偏移和栈上落在模块内的返回地址
+  一起写日志，下次崩溃先看 `crash stack:` 行。
 
 ## 3. 一次跑完
 

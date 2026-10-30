@@ -20,7 +20,7 @@ extern "C" {
 #endif
 
 #define AK_ABI_MAJOR 1
-#define AK_ABI_MINOR 8
+#define AK_ABI_MINOR 9
 
 typedef void (*ak_event_cb)(const char* event_json, void* user);
 
@@ -97,10 +97,14 @@ AK_API const char* ak_capture_start(const char* request_json);
 AK_API const char* ak_capture_status(int64_t session_id);
 AK_API int32_t ak_capture_pause(int64_t session_id);
 AK_API int32_t ak_capture_resume(int64_t session_id);
-// 停止并收尾(回填 WAV 头/写 session.json/混音+remux 出 capture.mkv/写 project.json);
-// -> {dir, capture, project, duration_ms, audio_tracks, videos:[], audios:[],
-//     finalize_error?}
+// 停止会话(回填 WAV 头/写 session.json), 不做混音转封装, 返回很快;
+// 会话状态只在本进程内, 必须由创建会话的线程/isolate 调用。
+// -> {dir, videos:[], audios:[]}
 AK_API const char* ak_capture_stop(int64_t session_id);
+// 收尾已停止的会话目录(只读文件, 可在任意 isolate 调): 混音+remux 出
+// capture.mkv 并写 project.json; json={dir}; -> {dir, capture, project,
+// duration_ms, audio_tracks, videos:[], audios:[], audio?, audio_error?}
+AK_API const char* ak_capture_finalize(const char* request_json);
 
 // ---- 录屏工程(ABI 1.8): 场景包装 + 裁剪 + 导出 ----
 // 打开 session 目录(读 session.json/project.json/cursor.bin/events.json/shapes.json)

@@ -411,6 +411,28 @@ bool finalize_capture(const std::string& dir, json* out, std::string* error) {
   return true;
 }
 
+void scan_outputs(const std::string& dir, std::vector<std::string>* videos,
+                  std::vector<std::string>* audios) {
+  std::error_code ec;
+  for (const auto& entry :
+       std::filesystem::recursive_directory_iterator(dir, ec)) {
+    if (!entry.is_regular_file()) {
+      continue;
+    }
+    const auto path = entry.path();
+    if (path.filename().string().find(".avoxkit-") != std::string::npos) {
+      continue;
+    }
+    std::string ext = path.extension().string();
+    std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+    if (ext == ".mkv" || ext == ".mp4") {
+      videos->push_back(path.generic_string());
+    } else if (ext == ".wav") {
+      audios->push_back(path.generic_string());
+    }
+  }
+}
+
 }  // namespace
 
 extern "C" const char* ak_capture_devices_json(void) {
@@ -486,7 +508,6 @@ extern "C" const char* ak_capture_start(const char* request_json) {
   const bool wantLoop = req.value("loop", false);
   const int32_t regionW = req.value("region_w", 0);
   const int32_t regionH = req.value("region_h", 0);
-
   // 显示器设备 + 物理 rect(区域=显示器左上原点的物理像素)
   avox::IVideoManager* vmgr =
       avox::getVideoManager(avox::VDeviceSdk::win_capture);
@@ -619,6 +640,11 @@ extern "C" const char* ak_capture_stop(int64_t session_id) {
   std::unique_ptr<ak::CursorTelemetry> cursor;
   {
     std::lock_guard<std::mutex> lock(g_capMtx);
+    // 失败分支记下现场: 跨 isolate 加载会得到另一份静态变量, 这里能看出来
+    ak::log(ak::LogLevel::info,
+            "capture: stop enter id=" + std::to_string(session_id) +
+                " active=" + std::to_string(g_sessionId) +
+                " has_session=" + (g_session ? "1" : "0"));
     if (!g_session || session_id != g_sessionId) {
       return ak::dup_cstr("{\"ok\":false,\"code\":-10}");
     }
@@ -636,36 +662,71 @@ extern "C" const char* ak_capture_stop(int64_t session_id) {
   session->stop();
   delete session;
   json out = {{"ok", true}, {"dir", dir}};
-  json finalized;
-  std::string finalizeError;
-  if (finalize_capture(dir, &finalized, &finalizeError)) {
-    out.update(finalized);
-  } else {
-    out["finalize_error"] = finalizeError;
-  }
   json videos = json::array();
   json audios = json::array();
-  std::error_code ec;
-  for (const auto& entry :
-       std::filesystem::recursive_directory_iterator(dir, ec)) {
-    if (!entry.is_regular_file()) {
-      continue;
-    }
-    const auto path = entry.path();
-    const std::string name = path.filename().string();
-    if (name.find(".avoxkit-") != std::string::npos) {
-      continue;
-    }
-    std::string ext = path.extension().string();
-    std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
-    if (ext == ".mkv" || ext == ".mp4") {
-      videos.push_back(path.generic_string());
-    } else if (ext == ".wav") {
-      audios.push_back(path.generic_string());
-    }
+  std::vector<std::string> videoFiles;
+  std::vector<std::string> audioFiles;
+  scan_outputs(dir, &videoFiles, &audioFiles);
+  for (const auto& path : videoFiles) {
+    videos.push_back(path);
+  }
+  for (const auto& path : audioFiles) {
+    audios.push_back(path);
   }
   out["videos"] = videos;
   out["audios"] = audios;
+  ak::log(ak::LogLevel::info, "capture: stop done dir=" + dir);
+  return ak::dup_cstr(out.dump());
+}
+
+extern "C" const char* ak_capture_finalize(const char* request_json) {
+  if (!ak::is_ready()) {
+    return ak::dup_cstr("{\"ok\":false,\"code\":-4}");
+  }
+  json req = json::parse(request_json ? request_json : "{}", nullptr, false);
+  if (req.is_discarded()) {
+    return ak::dup_cstr("{\"ok\":false,\"code\":-2}");
+  }
+  const std::string dir = req.value("dir", std::string());
+  if (dir.empty()) {
+    return ak::dup_cstr("{\"ok\":false,\"code\":-1}");
+  }
+  ak::log(ak::LogLevel::info,
+          "capture: finalize enter dir=" + dir +
+              " via=" + req.value("via", std::string("host")));
+  if (req.contains("isolate_error")) {
+    std::string text = req.value("isolate_error", std::string());
+    if (text.size() > 300) {
+      text.resize(300);
+    }
+    ak::log(ak::LogLevel::warn, "capture: isolate load failed: " + text);
+  }
+  json finalized;
+  std::string finalizeError;
+  if (!finalize_capture(dir, &finalized, &finalizeError)) {
+    ak::log(ak::LogLevel::warn, "capture: finalize failed: " + finalizeError);
+    json out = {{"ok", false}, {"code", (int32_t)AK_E_BAD_SOURCE},
+                {"dir", dir}, {"error", finalizeError}};
+    return ak::dup_cstr(out.dump());
+  }
+  json out = {{"ok", true}, {"dir", dir}};
+  out.update(finalized);
+  json videos = json::array();
+  json audios = json::array();
+  std::vector<std::string> videoFiles;
+  std::vector<std::string> audioFiles;
+  scan_outputs(dir, &videoFiles, &audioFiles);
+  for (const auto& path : videoFiles) {
+    videos.push_back(path);
+  }
+  for (const auto& path : audioFiles) {
+    audios.push_back(path);
+  }
+  out["videos"] = videos;
+  out["audios"] = audios;
+  ak::log(ak::LogLevel::info,
+          "capture: finalize done duration_ms=" +
+              std::to_string(finalized.value("duration_ms", (int64_t)0)));
   return ak::dup_cstr(out.dump());
 }
 
