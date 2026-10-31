@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import '../core/engine.dart';
@@ -32,15 +34,24 @@ class _AppShellState extends State<AppShell> {
   // 商店截图构建可指定首屏; 默认仍是录屏
   int _index = const int.fromEnvironment('AVOXKIT_START_TAB');
 
+  @override
+  void initState() {
+    super.initState();
+    final env = int.tryParse(Platform.environment['AVOXKIT_START_TAB'] ?? '');
+    if (env != null && env >= 0 && env < _items.length) {
+      _index = env;
+    }
+  }
+
   static final _items = [
-    _NavSpec(I18n.tr('录屏'), Icons.radio_button_checked),
-    _NavSpec(I18n.tr('转换'), Icons.swap_horiz),
-    _NavSpec(I18n.tr('截取片段'), Icons.content_cut),
-    _NavSpec(I18n.tr('提取音频'), Icons.audiotrack),
-    _NavSpec(I18n.tr('提取字幕'), Icons.subtitles_outlined),
-    _NavSpec(I18n.tr('图像修复'), Icons.auto_fix_high_outlined),
-    _NavSpec(I18n.tr('任务'), Icons.list_alt),
-    _NavSpec(I18n.tr('关于'), Icons.info_outline),
+    _NavSpec('录屏', Icons.radio_button_checked),
+    _NavSpec('转换', Icons.swap_horiz),
+    _NavSpec('截取片段', Icons.content_cut),
+    _NavSpec('提取音频', Icons.audiotrack),
+    _NavSpec('提取字幕', Icons.subtitles_outlined),
+    _NavSpec('图像修复', Icons.auto_fix_high_outlined),
+    _NavSpec('任务', Icons.list_alt),
+    _NavSpec('关于', Icons.info_outline),
   ];
 
   @override
