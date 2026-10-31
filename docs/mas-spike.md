@@ -1,8 +1,8 @@
 # macOS 沙盒 / Mac App Store 提交（mas 分支）
 
-状态：2026-10-31 **已重新提审（15 语言）**。ASC App ID `6829203879`，版本 `0.1.0 (build 2)`，
-`WAITING_FOR_REVIEW`（提交时间 2026-10-31T13:39:48Z）。首版 build 1 为中文单语，
-已撤回；build 2 带 15 个商店 locale 重新提交。
+状态：2026-10-31 **已重新提审（15 语言 + ASO 元数据）**。ASC App ID `6829203879`，
+版本 `0.1.0 (build 3)`，`WAITING_FOR_REVIEW`（提交时间 2026-10-31T15:47:43Z）。
+build 1（中文单语，12:25）与 build 2（15 语言，13:39）均已撤回。
 
 ## 目标
 
@@ -77,12 +77,32 @@ de-DE / es-ES / it / pt-PT / pt-BR / ru / id / th / vi`。
 - 取舍：机翻初稿 + 50 个核心术语人工覆盖；技术长句（编码器/容器提示）仍是
   机翻水平，后续按用户反馈迭代。
 
+## ASO 元数据（2026-10-31，build 3）
+
+竞品实测（iTunes Search API，macOS 美区/中国区）：单点工具（转换/压缩/录屏/提音频）
+都有成熟头部，但「一站式本地工具箱」位置几乎没人占（`video toolbox` 美区 45 个结果、
+国内仅 12 个，且头部 0–9 评）。原名称 `Avoxkit` 不含搜索词，是最大的流量损失。
+
+build 3 已把 15 个 locale 的名称/副标题/关键词全部换成「品牌 + 品类词」：
+
+| locale | 名称 | 副标题 |
+|---|---|---|
+| zh-Hans | `Avoxkit 音视频转换器` | `视频转换·压缩·录屏·字幕` |
+| en-US | `Avoxkit: Video Converter` | `Convert, compress & record` |
+| zh-Hant | `Avoxkit 影音轉換器` | `影片轉換·壓縮·錄影·字幕` |
+| ja | `Avoxkit: 動画変換` | `変換・圧縮・画面録画` |
+
+其余 11 个 locale 同规则；关键词填到 ≤100 字符且不与名称/副标题重复。
+
+**评分引导**：成功任务满 3 次后调 `SKStoreReviewController.requestReview()`，
+只请求一次，计数落盘 `review.json`；启动不弹，避免低分反噬。
+
 ## 已提交（2026-10-31）
 
 1. ASC 建 App 记录：macOS / Avoxkit / 简体中文 / `dev.avox.avoxkit` / SKU `avoxkit.mas`。
-2. 上传 `dist/avoxkit.pkg`：build 1（中文）→ 撤回；build `d6fb4e05…`（15 语言）
-   处理为 `VALID`，已挂到 0.1.0。
-3. 元数据：主分类 Photo & Video、副标题、描述、关键词、支持 URL、
+2. 上传 `dist/avoxkit.pkg`：build 1（中文）→ 撤回；build 2（15 语言）→ 撤回；
+   build `098f3604…`（15 语言 + ASO + 评分引导）处理为 `VALID`，已挂到 0.1.0。
+3. 元数据：主分类 Photo & Video、15 locale 名称/副标题/描述/关键词、支持 URL、
    隐私政策 URL（`https://github.com/xxxzhou/avoxkit/blob/main/PRIVACY.md`）、
    版权、年龄分级全「无」、App 隐私「不收集数据」并发布。
 4. 截图：`APP_DESKTOP` 15 套 × 3 张 2560×1600，全部 `COMPLETE`。

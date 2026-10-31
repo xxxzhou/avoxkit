@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import '../native/ak_events.dart';
 import 'engine.dart';
+import 'review_prompt.dart';
 import 'task.dart';
 import 'task_group.dart';
 
@@ -327,7 +328,11 @@ class TaskStore extends ChangeNotifier {
         kind: event.kind ?? 'transcode',
       ),
     );
+    final wasDone = item.state == 'done';
     item.apply(event);
+    if (!wasDone && item.state == 'done') {
+      ReviewPrompt.onTaskDone();
+    }
     notifyListeners();
   }
 

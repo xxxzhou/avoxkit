@@ -7,6 +7,7 @@ import 'core/app_paths.dart';
 import 'core/compat_options.dart';
 import 'core/engine.dart';
 import 'core/i18n.dart';
+import 'core/review_prompt.dart';
 import 'core/task_store.dart';
 import 'native/ak_bindings.dart';
 import 'ui/shell.dart';
@@ -16,6 +17,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await AppPaths.init();
   await I18n.load();
+  await ReviewPrompt.load();
   await CompatOptions.load();
   late final Engine engine;
   try {
