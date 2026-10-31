@@ -4,6 +4,7 @@
 #include "ak_internal.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>
@@ -29,6 +30,8 @@
 #ifndef WDA_EXCLUDEFROMCAPTURE
 #define WDA_EXCLUDEFROMCAPTURE 0x00000011
 #endif
+#elif defined(__APPLE__)
+#include <CoreGraphics/CoreGraphics.h>
 #endif
 
 namespace {
@@ -51,6 +54,40 @@ bool g_wdaApplied = false;
 
 const char* state_str(avox::CaptureState s) {
   return avox::getCaptureStateStr(s);
+}
+
+// macOS 的屏幕/音频管理器注册在 mac_capture / ios 名下; 写死 Windows 枚举
+// 会让 devices_json 三项全空, 录屏 start 也找不到显示器(-21)。
+avox::VDeviceSdk capture_video_sdk() {
+#ifdef __APPLE__
+  return avox::VDeviceSdk::mac_capture;
+#else
+  return avox::VDeviceSdk::win_capture;
+#endif
+}
+
+avox::ADeviceSdk capture_audio_sdk() {
+#ifdef __APPLE__
+  return avox::ADeviceSdk::ios;
+#else
+  return avox::ADeviceSdk::wasapi;
+#endif
+}
+
+bool is_mic_device(avox::IAudioSource* dev) {
+  if (!dev) {
+    return false;
+  }
+  const auto kind = dev->getDeviceKind();
+  if (kind == avox::ADeviceKind::mic) {
+    return true;
+  }
+#ifdef __APPLE__
+  // avox 的 IOSAudioSource 没标 deviceKind; 该管理器只暴露麦克风
+  return kind == avox::ADeviceKind::none;
+#else
+  return false;
+#endif
 }
 
 class CaptureOb : public avox::ICaptureSessionOb {
@@ -131,6 +168,32 @@ std::vector<MonitorRect> enum_monitors() {
         return TRUE;
       },
       (LPARAM)&out);
+#elif defined(__APPLE__)
+  // 与 avox MacCapture 的 DISPLAY<CGDirectDisplayID> 对齐; region 用物理像素
+  uint32_t count = 0;
+  if (CGGetActiveDisplayList(0, nullptr, &count) == kCGErrorSuccess &&
+      count > 0) {
+    std::vector<CGDirectDisplayID> ids(count);
+    if (CGGetActiveDisplayList(count, ids.data(), &count) == kCGErrorSuccess) {
+      for (CGDirectDisplayID id : ids) {
+        const CGRect bounds = CGDisplayBounds(id);
+        const int32_t pw = (int32_t)CGDisplayPixelsWide(id);
+        const int32_t ph = (int32_t)CGDisplayPixelsHigh(id);
+        const double sx =
+            bounds.size.width > 0 ? pw / bounds.size.width : 1.0;
+        const double sy =
+            bounds.size.height > 0 ? ph / bounds.size.height : 1.0;
+        MonitorRect m;
+        m.id = "DISPLAY" + std::to_string((unsigned)id);
+        m.x = (long)std::llround(bounds.origin.x * sx);
+        m.y = (long)std::llround(bounds.origin.y * sy);
+        m.w = pw;
+        m.h = ph;
+        m.primary = CGDisplayIsMain(id) != 0;
+        out.push_back(m);
+      }
+    }
+  }
 #endif
   return out;
 }
@@ -144,7 +207,12 @@ bool add_audio(avox::ICaptureSession* session, avox::IAudioManager* mgr,
   const char* trackId = mic ? "mic" : "sys";
   for (int32_t i = 0; i < mgr->getDeviceCount(); i++) {
     avox::IAudioSource* dev = mgr->getDevice(i);
-    if (dev && dev->getDeviceKind() == kind) {
+    if (!dev) {
+      continue;
+    }
+    const bool match =
+        mic ? is_mic_device(dev) : dev->getDeviceKind() == kind;
+    if (match) {
       return session->addAudioInput({dev, trackId});
     }
   }
@@ -446,7 +514,7 @@ extern "C" const char* ak_capture_devices_json(void) {
               {"loops", json::array()}};
   auto monitors = enum_monitors();
   avox::IVideoManager* vmgr =
-      avox::getVideoManager(avox::VDeviceSdk::win_capture);
+      avox::getVideoManager(capture_video_sdk());
   if (vmgr) {
     for (int32_t i = 0; i < vmgr->getDeviceCount(); i++) {
       avox::IVideoSource* dev = vmgr->getDevice(i);
@@ -466,7 +534,7 @@ extern "C" const char* ak_capture_devices_json(void) {
       out["monitors"].push_back(m);
     }
   }
-  avox::IAudioManager* amgr = avox::getAudioManager(avox::ADeviceSdk::wasapi);
+  avox::IAudioManager* amgr = avox::getAudioManager(capture_audio_sdk());
   if (amgr) {
     for (int32_t i = 0; i < amgr->getDeviceCount(); i++) {
       avox::IAudioSource* dev = amgr->getDevice(i);
@@ -474,7 +542,7 @@ extern "C" const char* ak_capture_devices_json(void) {
         continue;
       }
       json a = {{"id", dev->getDeviceId()}, {"name", dev->getDeviceName()}};
-      if (dev->getDeviceKind() == avox::ADeviceKind::mic) {
+      if (is_mic_device(dev)) {
         out["mics"].push_back(a);
       } else if (dev->getDeviceKind() == avox::ADeviceKind::loopback) {
         out["loops"].push_back(a);
@@ -509,8 +577,7 @@ extern "C" const char* ak_capture_start(const char* request_json) {
   const int32_t regionW = req.value("region_w", 0);
   const int32_t regionH = req.value("region_h", 0);
   // 显示器设备 + 物理 rect(区域=显示器左上原点的物理像素)
-  avox::IVideoManager* vmgr =
-      avox::getVideoManager(avox::VDeviceSdk::win_capture);
+  avox::IVideoManager* vmgr = avox::getVideoManager(capture_video_sdk());
   avox::IVideoSource* monitor = nullptr;
   MonitorRect rect;
   if (vmgr) {
@@ -556,7 +623,7 @@ extern "C" const char* ak_capture_start(const char* request_json) {
     std::filesystem::remove_all(sessionDir, ec);
     return ak::dup_cstr("{\"ok\":false,\"code\":-21}");
   }
-  avox::IAudioManager* amgr = avox::getAudioManager(avox::ADeviceSdk::wasapi);
+  avox::IAudioManager* amgr = avox::getAudioManager(capture_audio_sdk());
   if (wantMic && !add_audio(session, amgr, true)) {
     ak::log(ak::LogLevel::warn, "capture: mic unavailable, skip");
   }

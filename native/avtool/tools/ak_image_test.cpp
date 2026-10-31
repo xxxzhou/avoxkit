@@ -13,6 +13,8 @@
 
 #ifdef _WIN32
 #include <windows.h>
+#else
+#include <unistd.h>
 #endif
 
 #include <nlohmann/json.hpp>
@@ -24,6 +26,14 @@
 namespace {
 
 using nlohmann::json;
+
+long current_pid() {
+#ifdef _WIN32
+  return static_cast<long>(::GetCurrentProcessId());
+#else
+  return static_cast<long>(::getpid());
+#endif
+}
 
 struct Wait {
   std::mutex mtx;
@@ -117,7 +127,7 @@ int main(int argc, char** argv) {
   const std::string models =
       argc > 2 ? argv[2] : "D:/Work/github/avox_model/assets/models";
   const auto root = std::filesystem::temp_directory_path() /
-                    ("avoxkit-image-test-" + std::to_string(::GetCurrentProcessId()));
+                    ("avoxkit-image-test-" + std::to_string(current_pid()));
   std::error_code ec;
   std::filesystem::remove_all(root, ec);
   std::filesystem::create_directories(root / "work", ec);

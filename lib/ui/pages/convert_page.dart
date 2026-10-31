@@ -826,17 +826,22 @@ class _ConvertPageState extends State<ConvertPage> {
               contentPadding: EdgeInsets.zero,
               title: Text('硬件编码', style: AkText.label),
               subtitle: Text(
-                !widget.engine.hardwareAvailable
-                    ? '本机未检测到可用硬编，将使用软件编码'
-                    : _hardware
-                        ? '更快，画质与体积略逊软编；失败时自动回退'
-                        : '默认软编：画质与体积更可控，速度较慢',
+                widget.engine.hardwareVtAvailable
+                    ? '使用 VideoToolbox 硬件编码'
+                    : !widget.engine.hardwareAvailable
+                        ? '本机未检测到可用硬编，将使用软件编码'
+                        : _hardware
+                            ? '更快，画质与体积略逊软编；失败时自动回退'
+                            : '默认软编：画质与体积更可控，速度较慢',
                 style: AkText.micro,
               ),
-              value: _hardware && widget.engine.hardwareAvailable,
-              onChanged: widget.engine.hardwareAvailable
-                  ? (value) => setState(() => _hardware = value)
-                  : null,
+              value: widget.engine.hardwareVtAvailable ||
+                  (_hardware && widget.engine.hardwareAvailable),
+              onChanged: widget.engine.hardwareVtAvailable
+                  ? null
+                  : widget.engine.hardwareAvailable
+                      ? (value) => setState(() => _hardware = value)
+                      : null,
             ),
           ],
           const SizedBox(height: 18),

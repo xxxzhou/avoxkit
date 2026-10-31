@@ -209,7 +209,12 @@ void CursorTelemetry::stop() {
     }
     auto write = [](const std::string& path, const json& value) {
       std::FILE* f = nullptr;
+#ifdef _WIN32
       if (fopen_s(&f, path.c_str(), "wb") == 0 && f) {
+#else
+      f = std::fopen(path.c_str(), "wb");
+      if (f) {
+#endif
         const std::string text = value.dump(2);
         std::fwrite(text.data(), 1, text.size(), f);
         std::fclose(f);

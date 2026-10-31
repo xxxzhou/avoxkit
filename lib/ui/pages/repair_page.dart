@@ -567,6 +567,8 @@ class _RepairPageState extends State<RepairPage> {
       return null;
     }
     final dir = await getTemporaryDirectory();
+    // path_provider 只拼 bundle 子目录不创建, Caches 被系统清理后直接写会 ENOENT
+    await dir.create(recursive: true);
     final file = File(
       p.join(
         dir.path,

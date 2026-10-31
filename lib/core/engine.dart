@@ -299,13 +299,23 @@ class Engine {
     return features is Map && features[feature] == true;
   }
 
+  bool get hardwareVtAvailable {
+    final encoders = capabilities['encoders'];
+    if (encoders is! Map) {
+      return false;
+    }
+    final h264 = encoders['h264'];
+    return h264 is Map && h264['hardware_vt'] == true;
+  }
+
   bool get hardwareAvailable {
     final encoders = capabilities['encoders'];
     if (encoders is! Map) {
       return false;
     }
     final h264 = encoders['h264'];
-    return h264 is Map && h264['hardware_mf'] == true;
+    return h264 is Map &&
+        (h264['hardware_mf'] == true || h264['hardware_vt'] == true);
   }
 
   void shutdown() {

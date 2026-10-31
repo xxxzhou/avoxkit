@@ -390,10 +390,12 @@ std::string make_capabilities_json() {
       {"h264",
        {{"software", has_encoder("libx264")},
         {"hardware_mf", has_encoder("h264_mf")},
+        {"hardware_vt", has_encoder("h264_videotoolbox")},
         {"verified", false}}},
       {"hevc",
        {{"software", has_encoder("libx265")},
         {"hardware_mf", has_encoder("hevc_mf")},
+        {"hardware_vt", has_encoder("hevc_videotoolbox")},
         {"verified", false}}},
       {"audio",
        {{"aac", has_encoder("aac")}, {"mp3", has_encoder("libmp3lame")}}}};
@@ -447,10 +449,12 @@ int32_t encoder_probe_impl(const std::string& codec) {
     return avox::isEncoderRegistered(name);
   };
   if (codec == "h264" || codec == "avc") {
-    return (has("h264_mf") || has("libx264")) ? 1 : 0;
+    return (has("h264_mf") || has("libx264") || has("h264_videotoolbox")) ? 1
+                                                                          : 0;
   }
   if (codec == "hevc" || codec == "h265") {
-    return (has("hevc_mf") || has("libx265")) ? 1 : 0;
+    return (has("hevc_mf") || has("libx265") || has("hevc_videotoolbox")) ? 1
+                                                                          : 0;
   }
   if (codec == "aac") {
     return has("aac") ? 1 : 0;

@@ -9,10 +9,16 @@ avoxkit 的 `ak_*` C ABI shim（ABI v1）。
   `avox_cv` / `avox_onnx` / `avox_opencv` 三个插件, 构建开关见
   `docs/m1-kickoff.md`（`AVOX_ENABLE_ONNX/OPENCV/CV=ON`）。
 - avox 公共头需含 `createWatermarkRemoval()`（avox 2026-10-29 补充的导出）。
-- ffmpeg kit 在 `../../third_party/ffmpeg/kit`。x264/x265 是 MinGW 构建,
-  kit/bin 必须同时有 `libstdc++-6.dll`、`libwinpthread-1.dll`、
+- ffmpeg kit 在 `../../third_party/ffmpeg/kit`（Windows）。x264/x265 是 MinGW
+  构建, kit/bin 必须同时有 `libstdc++-6.dll`、`libwinpthread-1.dll`、
   `libgcc_s_seh-1.dll`; 缺 `libgcc` 时只有 PATH 里带 mingw64 的环境能启动,
   普通双击会报 error 126。`script/build_windows.ps1` 会从 MSYS2 自动补齐。
+- macOS kit 用 `script/ffmpeg/build_ffmpeg_macos.sh` 产出到
+  `third_party/ffmpeg/kit-macos`（静态、LGPL + libmp3lame、与 avox 同为
+  n9.0.1；`--disable-gpl`，不含 x264/x265）。shim 最终链接这份 kit，不复制进
+  avox 3rdparty，也不改 avox 版本；avox 需关闭 WebRTC/ZLM，否则
+  `libwebrtc_nosym.a` 内嵌的旧 ffmpeg/dav1d 会与 kit 撞符号。细节见
+  `docs/macos-porting.md` §2.1/§3/§4.2。
 - 两个编译门(`RtcPlayerApi.cpp` 的 ZLM guard、`CmdPlay.cpp` 的 freetype
   guard)已在 avox 仓补上; 若换机器, 先确认这两处。
 - macOS 移植的依赖、静态链接、插件符号可见性和打包步骤见
@@ -27,6 +33,21 @@ cmake --build native/avtool/build --config Release --parallel 8
 
 产物: `native/avtool/build/bin/Release/avoxkit_native.dll` + `ak_smoke.exe`。
 构建后会把 `avox.dll` 和 kit 的 ffmpeg/运行时 DLL 拷到同目录。
+
+### macOS
+
+先按 `docs/macos-porting.md` §3 构建 avox（`--flavor=commercial`，并关闭
+`AVOX_ENABLE_WEBRTC/ZLMEDIAKIT`），kit 用 §2.1 的脚本产出，然后：
+
+```bash
+cmake -S native/avtool -B native/avtool/build -DCMAKE_BUILD_TYPE=Release
+cmake --build native/avtool/build --config Release --parallel "$(sysctl -n hw.ncpu)"
+```
+
+产物：`native/avtool/build/bin/avoxkit_native.dylib` + 无头工具。同目录会带
+`plugins/`（4 个 avox 插件 + onnxruntime）、`assets/glsl/`、
+`libvulkan.1.dylib`（MoltenVK）。整包用 `script/build_macos.sh`，输出
+`dist/avoxkit-macos-arm64{,.zip}`。
 
 ## 验收
 

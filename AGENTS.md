@@ -15,8 +15,11 @@ Avoxkit 是一个免费、本地、无账号的桌面音视频工具箱，使用
 ## 许可证红线
 
 - 全仓 AGPL-3.0；分发即开源，不接受闭源衍生。
-- 出厂 ffmpeg 必须 **gpl flavor + libmp3lame**；含 nonfree/fdk-aac 的产物
-  **任何渠道不可分发**（avox `build_ffmpeg.py` GPL_MARKS 红线），出厂前跑 `--verify`。
+- macOS 发行链必须 **LGPL**：avox `--flavor=commercial` + ffmpeg
+  `--disable-gpl`（无 x264/x265，H.264/HEVC 走 VideoToolbox）。Windows 链
+  仍为 GPL flavor。macOS 包不得混入 GPL 软编。
+- 含 nonfree/fdk-aac 的产物 **任何渠道不可分发**（avox `build_ffmpeg.py`
+  GPL_MARKS 红线），出厂前跑 `--verify`。
 
 ## 文案口径
 

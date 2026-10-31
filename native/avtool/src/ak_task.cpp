@@ -1933,12 +1933,25 @@ class TaskRuntime {
           task->acodec != ACodecId::none &&
           task->trans_mode != TransMode::AudioCopy && !task->audio_copy;
       if (encodesAudio && !output_has_audio(task->temp)) {
-        std::filesystem::remove(std::filesystem::u8path(task->temp), ec);
-        emit_error(*task, "audio_missing", "Audio track missing in output",
-                   "audio encoder failed; check codec/channel support");
-        log(LogLevel::error, "task failed id=" + std::to_string(task->id) +
-                                 " code=audio_missing");
-        return;
+        // 源本身无音轨时产物无音轨是正常结果; 只有源有音轨才算编码失败
+        const json source =
+            json::parse(probe_uri_json(task->input), nullptr, false);
+        const bool source_has_audio =
+            source.is_object() && source.value("ok", false) &&
+            source.contains("audio") && source["audio"].is_array() &&
+            !source["audio"].empty();
+        if (!source_has_audio) {
+          log(LogLevel::info,
+              "task audio_missing skipped (source has no audio) id=" +
+                  std::to_string(task->id));
+        } else {
+          std::filesystem::remove(std::filesystem::u8path(task->temp), ec);
+          emit_error(*task, "audio_missing", "Audio track missing in output",
+                     "audio encoder failed; check codec/channel support");
+          log(LogLevel::error, "task failed id=" + std::to_string(task->id) +
+                                   " code=audio_missing");
+          return;
+        }
       }
       std::string move_error;
       if (rename_output(*task, move_error)) {

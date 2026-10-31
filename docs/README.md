@@ -8,7 +8,7 @@
 | [avox-media-reader-api.md](avox-media-reader-api.md) | avox 只读媒体接口：探测、索引、抓帧 | 已落地：探测/索引/抓帧走 IMediaReader，混音/封装走 IMediaComposer |
 | [ui.md](ui.md) | Flutter 端视觉与组件基准 | 当前基准 |
 | [testing.md](testing.md) | 无头测试与回归步骤 | 内部测试 |
-| [macos-porting.md](macos-porting.md) | macOS 移植：环境、构建、打包与验收 | 移植指南，未落地 |
+| [macos-porting.md](macos-porting.md) | macOS 移植：环境、构建、打包与验收 | 已落地（arm64）：构建/无头/GUI 冒烟通过，待签名公证 |
 | [m1-plan.md](m1-plan.md) | M1 计划口径 | 历史 |
 | [m1-kickoff.md](m1-kickoff.md) | M1 实测与落地记录 | 历史 |
 

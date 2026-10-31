@@ -270,6 +270,10 @@ filtergraph 补能力——上述都走引擎自有链。
   依赖 MSYS2 `mingw-w64-x86_64-libx264/x265/lame/vulkan-headers`
   (`--check-deps` 自检; **x264 元包勿装**, 会拖入 ffmpeg 全家)。
   出厂前 `--verify` 只扫 nonfree/fdk-aac; GPL 标记在 AGPL 渠道合法。
+  **macOS 同口径**: `script/ffmpeg/build_ffmpeg_macos.sh` 产出静态 kit
+  `third_party/ffmpeg/kit-macos`, 上游版本钉在 avox 的 n9.0.1, 只改 configure;
+  avox 继续用自己 3rdparty 的 ffmpeg 编译, `libavox.a` 对 av_* 只有未定义引用,
+  最终由 shim 链接 kit 的 `.a` 顶替——不复制进 avox 仓, 也不改 avox 版本。
 - **avox 库**: CMake 开关 `AVOX_ENABLE_FFMPEG/CLI/PLUGINS...`
   (avox `CMakeLists.txt:201-218`); 工具链路不需要播放呈现层, CLI 开关
   可关, avox_sherpa 插件必开。首次链接(M1)时钉下具体 target 清单。

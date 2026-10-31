@@ -2,7 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- DMG 直发：输出到源文件旁边/批量目录/NAS 都会被沙盒拦，Release 关闭 -->
 	<key>com.apple.security.app-sandbox</key>
-	<true/>
+	<false/>
 </dict>
 </plist>

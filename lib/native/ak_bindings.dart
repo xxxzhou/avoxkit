@@ -107,14 +107,31 @@ class AkBindings {
       return AkBindings._(DynamicLibrary.open(path ?? _defaultLibraryPath()));
     } catch (error) {
       throw AkBindingsException(
-        '无法加载 avoxkit_native.dll。请确认它和 avox.dll、ffmpeg DLL 在 '
-        'exe 同目录。原始错误: $error',
+        '无法加载 ${_libraryFileName()}。请确认它和依赖库在可执行文件同目录。'
+        '原始错误: $error',
       );
     }
   }
 
+  static String _libraryFileName() =>
+      Platform.isMacOS ? 'avoxkit_native.dylib' : 'avoxkit_native.dll';
+
   /// isolate 里也走绝对路径, 不依赖工作目录
   static String _defaultLibraryPath() {
+    if (Platform.isMacOS) {
+      // Contents/MacOS/avoxkit -> Contents/Frameworks/avoxkit_native.dylib
+      final candidate = p.normalize(
+        p.join(
+          p.dirname(Platform.resolvedExecutable),
+          '..',
+          'Frameworks',
+          'avoxkit_native.dylib',
+        ),
+      );
+      if (File(candidate).existsSync()) {
+        return candidate;
+      }
+    }
     if (Platform.isWindows) {
       final candidate = p.join(
         p.dirname(Platform.resolvedExecutable),
@@ -124,7 +141,7 @@ class AkBindings {
         return candidate;
       }
     }
-    return 'avoxkit_native.dll';
+    return _libraryFileName();
   }
 
   final DynamicLibrary _lib;

@@ -87,7 +87,7 @@ class AboutPage extends StatelessWidget {
                 Text('Powered by avox', style: AkText.panelTitle),
                 const SizedBox(height: 8),
                 Text(
-                  '媒体引擎是开源的 avox（AGPL-3.0）。',
+                  '媒体引擎是开源的 avox（AGPL-3.0 / 商业双许可）。',
                   style: AkText.body.copyWith(color: AkColors.muted),
                 ),
                 const SizedBox(height: 16),

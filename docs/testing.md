@@ -397,6 +397,67 @@ ffmpeg -ss 1 -i <tmp>/ak_cap/export.mp4 -frames:v 1 <tmp>/frame.png
 - `ak_engine.cpp` 的崩溃钩子会把异常模块/偏移和栈上落在模块内的返回地址
   一起写日志，下次崩溃先看 `crash stack:` 行。
 
+## 3. macOS（arm64）
+
+先按 `docs/macos-porting.md` 准备 avox（`--flavor=agpl`，关闭
+`AVOX_ENABLE_WEBRTC/ZLMEDIAKIT`）与 `kit-macos`。工具在
+`native/avtool/build/bin/`，没有 `.exe` 后缀。
+
+```bash
+cd native/avtool/build/bin
+./ak_smoke version
+./ak_smoke init <workdir>
+./ak_smoke caps <workdir>
+./ak_smoke probe <media> <workdir>
+./ak_smoke transcode <in> <out> <workdir> --audio-codec mp3 --container mp4 --overwrite
+./ak_smoke extract <in> <out.m4a> <workdir> --codec aac --overwrite
+./ak_smoke trim <in> <out> <workdir> 10000 16000
+./ak_smoke index <in> 300
+./ak_smoke frames <in> <out_dir> 8 320
+./ak_features_test <in> <workdir> <outdir>
+./ak_subtitle_test <带字幕轨媒体> <workdir> <outdir>
+./ak_image_test <图片> <模型根>
+```
+
+`libvulkan.1.dylib`（MoltenVK）必须和 shim 同目录，否则 `caps.vulkan=false`，
+缩放转码 `output_finalize_failed`、`frames` 回 `render_unavailable`。
+
+2026-10-30 参考结果（`ass_test.mkv`、`avox_model/assets/models`）：
+
+- `ak_features_test`：170 checks，0 failed；
+- `ak_subtitle_test`：9 checks，0 failed；
+- `ak_image_test`：`image_plugin=1 image_inpaint=1`，手绘 mask 产出 160×160 PNG，
+  自动模式 `no_watermark`（样图无水印），PASS；
+- smoke 的 probe/transcode(MP3)/extract(m4a)/trim/index/frames 全部 exit 0；
+- 无音轨源（`avox_electron.mp4`）转码正常完成（源无音轨时跳过
+  `audio_missing` 校验）。
+
+### 3.1 GUI 与打包
+
+```bash
+./script/build_macos.sh
+open dist/avoxkit-macos-arm64/avoxkit.app
+```
+
+2026-10-30 实测：启动后引擎就绪、4 个 avox 插件全部发现；转换页选
+`ass_test.mkv`，probe 显示 H.264+AAC 30s，改 MP4 直接封装完成，产物
+`ffmpeg -i` 为 H.264+AAC 30s；Cmd+Q 退出日志完整、无残留进程、无新崩溃。
+
+录屏整链（同一天，`panvox-dev` 自签包）：
+
+- 首次录屏前授予「屏幕与系统录音」+「麦克风」；自签证书固定后重建安装包，
+  授权仍然有效，不再弹 TCC 提示；
+- 43.8s、60fps、0 dropped，落盘 `screen.mkv`（H.264 1470×956）、
+  `audio/mic.wav`（f32 48kHz mono，8,425,472 字节，ffmpeg 时长 43.88s）、
+  `capture.mkv`（H.264+AAC）；
+- 工程导出到跨卷目录 `/Volumes/PSSD/...` 成功（`ffmpeg -i` 为
+  H.264 1920×1080 + AAC 48kHz stereo），「打开所在文件夹」在 Finder 中选中
+  成片；
+- `flutter test` 98 项全部通过。
+
+当前本地/内测包用固定自签证书 `panvox-dev`（`CODESIGN_IDENTITY` 可覆盖），
+对外分发仍需 Developer ID 签名 + 公证（见 `docs/macos-porting.md` §6.3）。
+
 ## 3. 一次跑完
 
 ```bash

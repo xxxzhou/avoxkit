@@ -7,6 +7,10 @@
 #include <system_error>
 #include <vector>
 
+#ifndef _WIN32
+#include <cerrno>
+#endif
+
 #include "ak_reader.hpp"
 #include "avox/AvoxCapture.h"
 #include "avox/AvoxMedia.h"
@@ -134,6 +138,19 @@ bool replace_file(const std::string& from, const std::string& to,
 #endif
   std::error_code ec;
   std::filesystem::rename(from, to, ec);
+#ifndef _WIN32
+  // 保存位置可能跨卷(iCloud/外置盘/网络盘), rename 报 EXDEV; 退化为拷贝删源
+  if (ec && ec.value() == EXDEV) {
+    ec.clear();
+    std::filesystem::copy_file(from, to,
+                               std::filesystem::copy_options::overwrite_existing,
+                               ec);
+    if (!ec) {
+      std::error_code rm;
+      std::filesystem::remove(from, rm);
+    }
+  }
+#endif
   if (ec) {
     if (error) {
       *error = ec.message();

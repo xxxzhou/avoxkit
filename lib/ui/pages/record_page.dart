@@ -60,7 +60,11 @@ class _RecordPageState extends State<RecordPage> {
   @override
   void initState() {
     super.initState();
-    final home = Platform.environment['USERPROFILE'] ?? '';
+    // Windows 用 USERPROFILE; macOS/Linux 只有 HOME。空字符串会退化成相对
+    // 路径 Videos/...，Finder 启动时 cwd=/ 建目录失败，音频 WAV 打不开。
+    final home = Platform.environment['USERPROFILE'] ??
+        Platform.environment['HOME'] ??
+        '';
     _outDir.text = p.join(home, 'Videos', 'Avoxkit 录屏');
     _loadDevices();
   }
@@ -446,8 +450,12 @@ class _RecordPageState extends State<RecordPage> {
   }
 
   Future<void> _reveal(String path) async {
-    if (Platform.isWindows) {
+    if (Platform.isMacOS) {
+      await Process.run('open', ['-R', path]);
+    } else if (Platform.isWindows) {
       await Process.run('explorer.exe', ['/select,', path]);
+    } else {
+      await Process.run('xdg-open', [p.dirname(path)]);
     }
   }
 
@@ -553,6 +561,14 @@ class _RecordPageState extends State<RecordPage> {
                     padding: const EdgeInsets.only(top: 6),
                     child: Text(
                       '没有检测到麦克风，音轨将跳过。',
+                      style: AkText.body.copyWith(color: AkColors.muted),
+                    ),
+                  ),
+                if (!_hasLoop && Platform.isMacOS)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Text(
+                      'macOS 暂不支持录制系统声音。',
                       style: AkText.body.copyWith(color: AkColors.muted),
                     ),
                   ),
