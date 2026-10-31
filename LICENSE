@@ -659,3 +659,18 @@ specific requirements.
 if any, to sign a "copyright disclaimer" for the program, if necessary.
 For more information on this, and how to apply and follow the GNU AGPL, see
 <https://www.gnu.org/licenses/>.
+
+APP STORE ADDITIONAL PERMISSION
+
+Additional permission under GNU AGPL version 3 section 7
+
+If you modify this Program, or any covered work, by linking or combining it
+with any library or component, and distribute the resulting work through the
+Apple App Store, you are granted additional permission to distribute the
+covered work through the Apple App Store, notwithstanding any term of the
+Apple App Store that would otherwise be prohibited by section 10 of the GNU
+Affero General Public License version 3.
+
+This additional permission applies only to distribution through the Apple
+App Store and does not otherwise modify the terms of the GNU Affero General
+Public License version 3.
