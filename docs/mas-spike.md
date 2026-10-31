@@ -1,7 +1,7 @@
 # macOS 沙盒 / Mac App Store 提交（mas 分支）
 
-状态：2026-10-31 进行中。本地可出带 Apple Distribution 签名、描述文件与沙盒
-entitlements 的 `.pkg`；**待 ASC 网页建 App 记录后上传**。
+状态：2026-10-31 **已提交审核**。ASC App ID `6829203879`，版本 `0.1.0 (build 1)`，
+`WAITING_FOR_REVIEW`（提交时间 2026-10-31T12:25:44Z）。
 
 ## 目标
 
@@ -63,16 +63,25 @@ MAS=1 CODESIGN_IDENTITY=panvox-dev MAS_PROFILE= \
   示例自动载入后转换成功，产物落在容器 `Documents/Avoxkit`。
 - `flutter analyze` 0 issue；`flutter test` 98/98。
 
-## 剩余
+## 已提交（2026-10-31）
 
-1. ASC 网页建 App 记录（API Key 无 `apps CREATE` 权限）：
-   macOS、名称 Avoxkit、简体中文、Bundle ID `dev.avox.avoxkit`、SKU `avoxkit.mas`。
-2. 上传 `.pkg`，等 `processingState=VALID`；挂到版本。
-3. 元数据：分类（摄影与录像）、年龄分级、隐私/支持 URL、审核备注、截图。
-4. 提审三段流；4.3 说明按「不同品类 + 不同 UI 范式 + 独立代码库」写进 Notes。
-5. 模型运行时下载（230/290 MB）在 2.4.5(iv) 属数据非代码，Notes 明确
-   “on-device inference, no executable code downloaded”；若被追问再改内置。
-6. YOLO26-Seg 权重是第三方 AGPL-3.0；商店包未内置，只按需下载，后续换
-   Apache/MIT 模型或取得商业授权。
-7. FFmpeg LGPL 静态链进 `avoxkit_native.dylib`；商店版先按 LGPL §6 提供
-   可重链接对象/源码（`SOURCE-OFFER.md`），后续再考虑拆 dylib。
+1. ASC 建 App 记录：macOS / Avoxkit / 简体中文 / `dev.avox.avoxkit` / SKU `avoxkit.mas`。
+2. 上传 `dist/avoxkit.pkg`，build `945843aa…` 处理为 `VALID`，已挂到 0.1.0。
+3. 元数据：主分类 Photo & Video、副标题、描述、关键词、支持 URL、
+   隐私政策 URL（`https://github.com/xxxzhou/avoxkit/blob/main/PRIVACY.md`）、
+   版权、年龄分级全「无」、App 隐私「不收集数据」并发布。
+4. 截图：`APP_DESKTOP` 三张 2560×1600，全部 `COMPLETE`。
+5. 价格：0 价 schedule（免费）；可售区域 175 个已创建。
+6. 审核备注：写了「转换 → 试用示例 → 开始转换」三步路径、模型下载属数据、
+   以及本品与账号其它 App 的代码/品类/UI 隔离。
+7. 三段式提审成功，状态 `WAITING_FOR_REVIEW`。
+
+## 已知风险（等审核）
+
+- 模型运行时下载 230/290 MB：按 2.4.5(iv) 属数据下载，Notes 已写明端侧推理、
+  不下载可执行代码；若审核追问，改为内置默认模型。
+- YOLO26-Seg 权重为第三方 AGPL-3.0（未内置，仅按需下载）；后续换
+  Apache/MIT 模型或取得商业授权。
+- FFmpeg LGPL 静态链进 `avoxkit_native.dylib`：商店版先按 LGPL §6 提供
+  源码/可重链接对象（`SOURCE-OFFER.md`）。
+- 中国区可能再次触发 `ICP_NUMBER_MISSING`（本地工具，先按 Apple 流程申诉）。
