@@ -1,7 +1,8 @@
 # macOS 沙盒 / Mac App Store 提交（mas 分支）
 
-状态：2026-10-31 **已提交审核**。ASC App ID `6829203879`，版本 `0.1.0 (build 1)`，
-`WAITING_FOR_REVIEW`（提交时间 2026-10-31T12:25:44Z）。
+状态：2026-10-31 **已重新提审（15 语言）**。ASC App ID `6829203879`，版本 `0.1.0 (build 2)`，
+`WAITING_FOR_REVIEW`（提交时间 2026-10-31T13:39:48Z）。首版 build 1 为中文单语，
+已撤回；build 2 带 15 个商店 locale 重新提交。
 
 ## 目标
 
@@ -63,14 +64,28 @@ MAS=1 CODESIGN_IDENTITY=panvox-dev MAS_PROFILE= \
   示例自动载入后转换成功，产物落在容器 `Documents/Avoxkit`。
 - `flutter analyze` 0 issue；`flutter test` 98/98。
 
+## 多语言（2026-10-31）
+
+与 panvox 同一组 15 个商店 locale：`zh-Hans / en-US / zh-Hant / ja / ko / fr-FR /
+de-DE / es-ES / it / pt-PT / pt-BR / ru / id / th / vi`。
+
+- UI：以中文原文为 key 的轻量 i18n（`lib/core/i18n.dart` 的 `tr()/T`），
+  14 份 `assets/i18n/*.json`；数字归一成 `{n}`、其它变量用 `{x}` 模板匹配；
+  设置页语言选择器，立即生效并写 `locale.txt` 持久化。
+- 商店：15 个 locale 的名称/副标题/描述/关键词/支持 URL/隐私 URL 全量；
+  每个 locale 3 张 2560×1600 截图（`Screenshots/mas/i18n/<locale>/`）。
+- 取舍：机翻初稿 + 50 个核心术语人工覆盖；技术长句（编码器/容器提示）仍是
+  机翻水平，后续按用户反馈迭代。
+
 ## 已提交（2026-10-31）
 
 1. ASC 建 App 记录：macOS / Avoxkit / 简体中文 / `dev.avox.avoxkit` / SKU `avoxkit.mas`。
-2. 上传 `dist/avoxkit.pkg`，build `945843aa…` 处理为 `VALID`，已挂到 0.1.0。
+2. 上传 `dist/avoxkit.pkg`：build 1（中文）→ 撤回；build `d6fb4e05…`（15 语言）
+   处理为 `VALID`，已挂到 0.1.0。
 3. 元数据：主分类 Photo & Video、副标题、描述、关键词、支持 URL、
    隐私政策 URL（`https://github.com/xxxzhou/avoxkit/blob/main/PRIVACY.md`）、
    版权、年龄分级全「无」、App 隐私「不收集数据」并发布。
-4. 截图：`APP_DESKTOP` 三张 2560×1600，全部 `COMPLETE`。
+4. 截图：`APP_DESKTOP` 15 套 × 3 张 2560×1600，全部 `COMPLETE`。
 5. 价格：0 价 schedule（免费）；可售区域 175 个已创建。
 6. 审核备注：写了「转换 → 试用示例 → 开始转换」三步路径、模型下载属数据、
    以及本品与账号其它 App 的代码/品类/UI 隔离。
