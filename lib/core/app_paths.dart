@@ -23,6 +23,14 @@ class AppPaths {
 
   static String? get sandboxOutputRoot => _outputRoot;
 
+  /// 示例片段落盘目录; 沙盒内外都放在 Documents 下, 沙盒里即容器 Documents。
+  static Future<String> sampleDir() async {
+    final docs = await getApplicationDocumentsDirectory();
+    final dir = p.join(docs.path, 'Avoxkit', 'Samples');
+    await Directory(dir).create(recursive: true);
+    return dir;
+  }
+
   /// Suggested path for a single-file output.
   static String suggested(String input, String fileName) {
     if (kSandboxed) {

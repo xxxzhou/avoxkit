@@ -3,6 +3,16 @@
 <plist version="1.0">
 <dict>
 	<!-- Mac App Store: 沙盒 + 用户选择文件 + 模型下载 + 麦克风 -->
+	<!-- application-identifier / team-identifier 由描述文件授权, Xcode 自动签名会注入;
+	     这里手工 codesign, 必须显式写, 否则产品页校验不认 -->
+	<key>com.apple.application-identifier</key>
+	<string>Y96Y9F6CFS.dev.avox.avoxkit</string>
+	<key>com.apple.developer.team-identifier</key>
+	<string>Y96Y9F6CFS</string>
+	<key>keychain-access-groups</key>
+	<array>
+		<string>Y96Y9F6CFS.*</string>
+	</array>
 	<key>com.apple.security.app-sandbox</key>
 	<true/>
 	<key>com.apple.security.network.client</key>

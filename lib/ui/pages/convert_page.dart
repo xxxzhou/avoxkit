@@ -10,6 +10,7 @@ import '../../core/convert_plan.dart';
 import '../../core/engine.dart';
 import '../../core/folder_scan.dart';
 import '../../core/folder_source.dart';
+import '../../core/sample_media.dart';
 import '../../core/task_store.dart';
 import '../tokens.dart';
 import '../widgets/folder_card.dart';
@@ -23,6 +24,9 @@ const _videoTypes = XTypeGroup(
   label: '视频',
   extensions: ['mkv', 'mp4', 'mov', 'avi', 'ts', 'flv', 'webm', 'wmv', 'm4v'],
 );
+
+/// 商店截图/审核演示用: 只在显式 dart-define 时启动即载入示例。
+const _autoDemo = bool.fromEnvironment('AVOXKIT_AUTO_DEMO');
 
 class ConvertPage extends StatefulWidget {
   const ConvertPage({
@@ -84,6 +88,9 @@ class _ConvertPageState extends State<ConvertPage> {
     _h265Available = _encoderAvailable('hevc');
     _aacAvailable = _encoderAvailable('aac');
     _mp3Available = _encoderAvailable('mp3');
+    if (_autoDemo) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _loadSample());
+    }
   }
 
   bool _encoderAvailable(String codec) {
@@ -163,7 +170,10 @@ class _ConvertPageState extends State<ConvertPage> {
     if (file == null) {
       return;
     }
-    final path = file.path;
+    await _useInput(file.path);
+  }
+
+  Future<void> _useInput(String path) async {
     _folder.clear();
     setState(() {
       _inputPath = path;
@@ -190,6 +200,24 @@ class _ConvertPageState extends State<ConvertPage> {
       }
       setState(() {
         _probeError = error is EngineException ? error.message : '$error';
+        _probing = false;
+      });
+    }
+  }
+
+  Future<void> _loadSample() async {
+    try {
+      final path = await SampleMedia.materialize();
+      if (!mounted) {
+        return;
+      }
+      await _useInput(path);
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _probeError = '示例加载失败: $error';
         _probing = false;
       });
     }
@@ -598,7 +626,11 @@ class _ConvertPageState extends State<ConvertPage> {
               ],
             )
           else if (_inputPath == null)
-            AkSourcePicker(onFile: _pickInput, onFolder: _pickFolder)
+            AkSourcePicker(
+              onFile: _pickInput,
+              onFolder: _pickFolder,
+              onSample: _loadSample,
+            )
           else
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,

@@ -28,7 +28,8 @@ class AppShell extends StatefulWidget {
 }
 
 class _AppShellState extends State<AppShell> {
-  int _index = 0;
+  // 商店截图构建可指定首屏; 默认仍是录屏
+  int _index = const int.fromEnvironment('AVOXKIT_START_TAB');
 
   static const _items = [
     _NavSpec('录屏', Icons.radio_button_checked),

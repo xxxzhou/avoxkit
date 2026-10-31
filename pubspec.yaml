@@ -22,6 +22,8 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/sample/avoxkit-demo.mp4
   fonts:
     - family: Albert Sans
       fonts:

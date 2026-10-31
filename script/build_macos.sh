@@ -7,9 +7,13 @@ set -euo pipefail
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 MAS=${MAS:-0}
+MAS_IDENTITY=${MAS_IDENTITY:-"Apple Distribution: Xin Zhou (Y96Y9F6CFS)"}
+MAS_PROFILE=${MAS_PROFILE:-"$HOME/.appstoreconnect/avoxkit/avoxkit.provisionprofile"}
+SIGNING_KEYCHAIN=${SIGNING_KEYCHAIN:-"$HOME/Library/Keychains/avoxkit-signing.keychain-db"}
 if [ "$MAS" = "1" ]; then
   ENTITLEMENTS="$ROOT/macos/Runner/Release-MAS.entitlements"
   DIST=${DIST:-"$ROOT/dist/avoxkit-macos-arm64-mas"}
+  CODESIGN_IDENTITY=${CODESIGN_IDENTITY:-"$MAS_IDENTITY"}
 else
   ENTITLEMENTS="$ROOT/macos/Runner/Release.entitlements"
   DIST=${DIST:-"$ROOT/dist/avoxkit-macos-arm64"}
@@ -72,6 +76,10 @@ FLUTTER_ARGS=(build macos --release)
 if [ "$MAS" = "1" ]; then
   FLUTTER_ARGS+=(--dart-define=AVOXKIT_SANDBOX=true)
 fi
+if [ "${DEMO:-0}" = "1" ]; then
+  FLUTTER_ARGS+=(--dart-define=AVOXKIT_AUTO_DEMO=true
+                 --dart-define=AVOXKIT_START_TAB=1)
+fi
 "$FLUTTER" "${FLUTTER_ARGS[@]}"
 [ -d "$APP" ] || die "Flutter 产物不存在: $APP"
 
@@ -106,26 +114,37 @@ cp -f "$AVOX_ROOT"/glsl/target/*.spv "$STAGED_APP/Contents/Resources/glsl/"
 cp -f "$ROOT/LICENSE" "$STAGED_APP/Contents/Resources/LICENSE.txt"
 cp -f "$ROOT/THIRD_PARTY_NOTICES.md" "$STAGED_APP/Contents/Resources/THIRD_PARTY_NOTICES.md"
 cp -f "$ROOT/SOURCE-OFFER.md" "$STAGED_APP/Contents/Resources/SOURCE-OFFER.md"
+# 应用级隐私清单: 无收集、无追踪, 只声明 UserDefaults/文件时间戳
+cp -f "$ROOT/macos/Runner/PrivacyInfo.xcprivacy" "$STAGED_APP/Contents/Resources/"
 
 # 先内层后外层; 自签/- 不能开 hardened runtime: 没有 Team ID, 库校验会拒绝
-# 加载 Flutter framework 与插件 dylib。公证分发(Developer ID)才开 runtime。
+# 加载 Flutter framework 与插件 dylib。公证分发(Developer ID)与 MAS 都开 runtime。
 SIGN_FLAGS=(--timestamp=none)
-if [[ "$CODESIGN_IDENTITY" == Developer\ ID\ Application:* ]]; then
+if [[ "$CODESIGN_IDENTITY" == Developer\ ID\ Application:* ]] ||
+   [[ "$CODESIGN_IDENTITY" == Apple\ Distribution:* ]]; then
   SIGN_FLAGS=(--options runtime --timestamp)
+fi
+KC_ARGS=()
+if [ -f "$SIGNING_KEYCHAIN" ]; then
+  KC_ARGS=(--keychain "$SIGNING_KEYCHAIN")
+fi
+if [ "$MAS" = "1" ] && [ -n "${MAS_PROFILE:-}" ]; then
+  [ -f "$MAS_PROFILE" ] || die "缺少 MAS 描述文件: $MAS_PROFILE"
+  cp -f "$MAS_PROFILE" "$STAGED_APP/Contents/embedded.provisionprofile"
 fi
 find "$STAGED_APP/Contents/Frameworks" -name '*.dylib' -print0 |
   while IFS= read -r -d '' lib; do
-    codesign --force "${SIGN_FLAGS[@]}" \
+    codesign --force "${SIGN_FLAGS[@]}" "${KC_ARGS[@]}" \
       --sign "$CODESIGN_IDENTITY" "$lib"
   done
 # 公证要求嵌套 framework 也用同一身份签; 只签 dylib 会漏掉
 # FlutterMacOS/App/file_selector/objective_c, 公证会直接失败。
 find "$STAGED_APP/Contents/Frameworks" -name '*.framework' -type d -print0 |
   while IFS= read -r -d '' fw; do
-    codesign --force "${SIGN_FLAGS[@]}" \
+    codesign --force "${SIGN_FLAGS[@]}" "${KC_ARGS[@]}" \
       --sign "$CODESIGN_IDENTITY" "$fw"
   done
-codesign --force "${SIGN_FLAGS[@]}" \
+codesign --force "${SIGN_FLAGS[@]}" "${KC_ARGS[@]}" \
   --entitlements "$ENTITLEMENTS" \
   --sign "$CODESIGN_IDENTITY" "$STAGED_APP"
 codesign --verify --deep --strict "$STAGED_APP"

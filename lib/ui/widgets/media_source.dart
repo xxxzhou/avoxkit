@@ -9,11 +9,15 @@ class AkSourcePicker extends StatelessWidget {
     super.key,
     required this.onFile,
     required this.onFolder,
+    this.onSample,
     this.hint,
   });
 
   final VoidCallback onFile;
   final VoidCallback onFolder;
+
+  /// 空库首次打开时审核/新用户没有素材, 给一条能立刻跑通的示例
+  final VoidCallback? onSample;
   final String? hint;
 
   @override
@@ -34,6 +38,14 @@ class AkSourcePicker extends StatelessWidget {
               icon: const Icon(Icons.folder_open_outlined, size: 18),
               label: const Text('打开文件夹'),
             ),
+            if (onSample != null) ...[
+              const SizedBox(width: 10),
+              TextButton.icon(
+                onPressed: onSample,
+                icon: const Icon(Icons.auto_awesome_outlined, size: 17),
+                label: const Text('试用示例'),
+              ),
+            ],
           ],
         ),
         if (hint != null) ...[
