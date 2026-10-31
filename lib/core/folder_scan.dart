@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:isolate';
+import './i18n.dart';
 
 /// 文件夹展开的输入: 只做纯文件系统工作, 可放进 isolate
 class FolderScanRequest {
@@ -76,7 +77,7 @@ FolderScanResult scanFolderSync(FolderScanRequest request) {
       entries: const [],
       skipped: 0,
       truncated: false,
-      error: '目录不存在',
+      error: I18n.tr('目录不存在'),
     );
   }
 

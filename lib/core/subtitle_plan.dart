@@ -1,3 +1,4 @@
+import './i18n.dart';
 /// 单文件字幕任务规划: 有内嵌文本轨就直出, 否则按开关走本地语音识别。
 /// 与 native 的 params.subtitle 一一对应; 批量时逐文件规划后提交。
 class SubtitleTrackInfo {
@@ -46,13 +47,13 @@ class SubtitleTrackInfo {
     }
     parts.add(prettySubtitleCodec(codec));
     if (!text) {
-      parts.add('图形，需语音识别');
+      parts.add(I18n.tr('图形，需语音识别'));
     }
     if (isDefault) {
-      parts.add('默认');
+      parts.add(I18n.tr('默认'));
     }
     if (forced) {
-      parts.add('强制');
+      parts.add(I18n.tr('强制'));
     }
     return parts.join(' · ');
   }
@@ -130,7 +131,7 @@ SubtitlePlan buildSubtitlePlan({
   required bool modelReady,
 }) {
   if (media == null) {
-    return const SubtitlePlan(reason: '还在读取媒体信息');
+    return  SubtitlePlan(reason: I18n.tr('还在读取媒体信息'));
   }
   final tracks = subtitleTracksFromProbe(media);
   final audio = media['audio'] is List && (media['audio'] as List).isNotEmpty;
@@ -144,7 +145,7 @@ SubtitlePlan buildSubtitlePlan({
       }
     }
     if (selected == null) {
-      return const SubtitlePlan(reason: '', error: '字幕轨不存在，请重新选择文件');
+      return  SubtitlePlan(reason: '', error: I18n.tr('字幕轨不存在，请重新选择文件'));
     }
     if (!selected.text) {
       return SubtitlePlan(
@@ -176,21 +177,21 @@ SubtitlePlan buildSubtitlePlan({
   }
 
   if (!allowAsr) {
-    return const SubtitlePlan(
+    return  SubtitlePlan(
       reason: '',
-      error: '没有内嵌文本字幕；打开“无字幕时语音识别”可生成',
+      error: I18n.tr('没有内嵌文本字幕；打开“无字幕时语音识别”可生成'),
     );
   }
   if (!audio) {
-    return const SubtitlePlan(
+    return  SubtitlePlan(
       reason: '',
-      error: '文件没有音轨，无法语音识别',
+      error: I18n.tr('文件没有音轨，无法语音识别'),
     );
   }
   return SubtitlePlan(
     source: SubtitlePlanSource.speech,
     reason: modelReady
-        ? '没有内嵌文本字幕，将用本地语音识别生成 SRT'
+        ? I18n.tr('没有内嵌文本字幕，将用本地语音识别生成 SRT')
         : '需要先下载语音识别模型（$SttModelSize.label）',
     needsModel: !modelReady,
     allowAsr: allowAsr,
@@ -257,7 +258,7 @@ String prettySubtitleCodec(String codec) {
     case 'ssa':
       return 'ASS';
     case 'mov_text':
-      return 'MP4 文本';
+      return I18n.tr('MP4 文本');
     case 'webvtt':
     case 'vtt':
       return 'WebVTT';
@@ -270,7 +271,7 @@ String prettySubtitleCodec(String codec) {
     case 'xsub':
       return 'XSUB';
     default:
-      return codec.isEmpty ? '字幕' : codec.toUpperCase();
+      return codec.isEmpty ? I18n.tr('字幕') : codec.toUpperCase();
   }
 }
 
@@ -284,17 +285,17 @@ String prettyLanguage(String? language) {
     case 'zh_cn':
     case 'chs':
     case 'cmn':
-      return '中文';
+      return I18n.tr('中文');
     case 'zh-tw':
     case 'zh_tw':
     case 'cht':
-      return '繁体中文';
+      return I18n.tr('繁体中文');
     case 'en':
     case 'eng':
       return 'English';
     case 'ja':
     case 'jpn':
-      return '日本語';
+      return I18n.tr('日本語');
     case 'ko':
     case 'kor':
       return '한국어';
@@ -322,5 +323,5 @@ String prettyLanguage(String? language) {
 
 /// 只给提示文案用, 避免 plan 依赖 UI/模型实现
 class SttModelSize {
-  static const label = '约 230 MB';
+  static String get label => I18n.tr('约 230 MB');
 }

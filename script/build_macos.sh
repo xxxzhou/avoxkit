@@ -11,11 +11,11 @@ MAS_IDENTITY=${MAS_IDENTITY:-"Apple Distribution: Xin Zhou (Y96Y9F6CFS)"}
 MAS_PROFILE=${MAS_PROFILE:-"$HOME/.appstoreconnect/avoxkit/avoxkit.provisionprofile"}
 SIGNING_KEYCHAIN=${SIGNING_KEYCHAIN:-"$HOME/Library/Keychains/avoxkit-signing.keychain-db"}
 if [ "$MAS" = "1" ]; then
-  ENTITLEMENTS="$ROOT/macos/Runner/Release-MAS.entitlements"
+  ENTITLEMENTS=${ENTITLEMENTS:-"$ROOT/macos/Runner/Release-MAS.entitlements"}
   DIST=${DIST:-"$ROOT/dist/avoxkit-macos-arm64-mas"}
   CODESIGN_IDENTITY=${CODESIGN_IDENTITY:-"$MAS_IDENTITY"}
 else
-  ENTITLEMENTS="$ROOT/macos/Runner/Release.entitlements"
+  ENTITLEMENTS=${ENTITLEMENTS:-"$ROOT/macos/Runner/Release.entitlements"}
   DIST=${DIST:-"$ROOT/dist/avoxkit-macos-arm64"}
 fi
 AVOX_ROOT=${AVOX_ROOT:-"$ROOT/../avox"}

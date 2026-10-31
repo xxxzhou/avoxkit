@@ -12,6 +12,7 @@ import 'pages/subtitle_page.dart';
 import 'pages/tasks_page.dart';
 import 'tokens.dart';
 import 'widgets/panel.dart';
+import '../core/i18n.dart';
 
 class AppShell extends StatefulWidget {
   const AppShell({
@@ -31,15 +32,15 @@ class _AppShellState extends State<AppShell> {
   // 商店截图构建可指定首屏; 默认仍是录屏
   int _index = const int.fromEnvironment('AVOXKIT_START_TAB');
 
-  static const _items = [
-    _NavSpec('录屏', Icons.radio_button_checked),
-    _NavSpec('转换', Icons.swap_horiz),
-    _NavSpec('截取片段', Icons.content_cut),
-    _NavSpec('提取音频', Icons.audiotrack),
-    _NavSpec('提取字幕', Icons.subtitles_outlined),
-    _NavSpec('图像修复', Icons.auto_fix_high_outlined),
-    _NavSpec('任务', Icons.list_alt),
-    _NavSpec('关于', Icons.info_outline),
+  static final _items = [
+    _NavSpec(I18n.tr('录屏'), Icons.radio_button_checked),
+    _NavSpec(I18n.tr('转换'), Icons.swap_horiz),
+    _NavSpec(I18n.tr('截取片段'), Icons.content_cut),
+    _NavSpec(I18n.tr('提取音频'), Icons.audiotrack),
+    _NavSpec(I18n.tr('提取字幕'), Icons.subtitles_outlined),
+    _NavSpec(I18n.tr('图像修复'), Icons.auto_fix_high_outlined),
+    _NavSpec(I18n.tr('任务'), Icons.list_alt),
+    _NavSpec(I18n.tr('关于'), Icons.info_outline),
   ];
 
   @override
@@ -135,7 +136,7 @@ class _Sidebar extends StatelessWidget {
               ),
               child: compact
                   ? const Center(
-                      child: Text(
+                      child: T(
                         'AK',
                         style: TextStyle(
                           color: AkColors.accent,
@@ -148,7 +149,7 @@ class _Sidebar extends StatelessWidget {
                   : Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
+                        const T(
                           'AVOXKIT',
                           style: TextStyle(
                             color: AkColors.textStrong,
@@ -158,7 +159,7 @@ class _Sidebar extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: 4),
-                        Text('本地音视频工具箱', style: AkText.micro),
+                        T('本地音视频工具箱', style: AkText.micro),
                       ],
                     ),
             ),
@@ -192,8 +193,8 @@ class _Sidebar extends StatelessWidget {
                         ),
                         const SizedBox(width: 8),
                         Expanded(
-                          child: Text(
-                            engine.ready ? '引擎就绪' : '引擎异常',
+                          child: T(
+                            engine.ready ? I18n.tr('引擎就绪') : I18n.tr('引擎异常'),
                             style: AkText.micro,
                           ),
                         ),
@@ -251,7 +252,7 @@ class _NavItem extends StatelessWidget {
             ),
             if (!compact) ...[
               const SizedBox(width: 12),
-              Text(
+              T(
                 spec.label,
                 style: TextStyle(
                   fontSize: 13,

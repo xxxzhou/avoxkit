@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../tokens.dart';
+import '../../core/i18n.dart';
 
 class Panel extends StatelessWidget {
   const Panel({
@@ -42,9 +43,9 @@ class PageHeader extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(title, style: AkText.pageTitle),
+        T(title, style: AkText.pageTitle),
         const SizedBox(height: 8),
-        Text(description, style: AkText.body.copyWith(color: AkColors.muted)),
+        T(description, style: AkText.body.copyWith(color: AkColors.muted)),
       ],
     );
   }
@@ -71,10 +72,10 @@ class LabeledRow extends StatelessWidget {
         children: [
           SizedBox(
             width: 92,
-            child: Text(label, style: AkText.label),
+            child: T(label, style: AkText.label),
           ),
           Expanded(
-            child: Text(
+            child: T(
               value,
               style: valueStyle ?? AkText.body,
               maxLines: 2,

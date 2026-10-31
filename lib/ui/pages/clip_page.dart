@@ -18,9 +18,10 @@ import '../widgets/media_source.dart';
 import '../widgets/panel.dart';
 import '../widgets/task_summary.dart';
 import '../widgets/trim_timeline.dart';
+import '../../core/i18n.dart';
 
-const _videoTypes = XTypeGroup(
-  label: '视频',
+final _videoTypes = XTypeGroup(
+  label: I18n.tr('视频'),
   extensions: ['mkv', 'mp4', 'mov', 'avi', 'ts', 'flv', 'webm', 'wmv', 'm4v'],
 );
 
@@ -104,7 +105,7 @@ class _ClipPageState extends State<ClipPage> {
 
   int get _activeMs => _scrubMs ?? (_activeAtEnd ? _endMs : _startMs);
   String get _activeLabel =>
-      _scrubMs != null ? '参考' : (_activeAtEnd ? '出点' : '入点');
+      _scrubMs != null ? I18n.tr('参考') : (_activeAtEnd ? I18n.tr('出点') : I18n.tr('入点'));
 
   int get _sourceDurationMs => _durationMs;
 
@@ -140,16 +141,16 @@ class _ClipPageState extends State<ClipPage> {
       return null;
     }
     if (source.stripLoading && source.strip == null) {
-      return '缩略图载入中…';
+      return I18n.tr('缩略图载入中…');
     }
-    return source.framesHint ?? '无画面预览';
+    return source.framesHint ?? I18n.tr('无画面预览');
   }
 
   String get _activeHint {
     if (_scrubMs != null) {
-      return '跟随指针，查看任意时刻';
+      return I18n.tr('跟随指针，查看任意时刻');
     }
-    return _activeAtEnd ? '产物到这一帧结束（半秒内偏差）' : '产物从这一帧开始';
+    return _activeAtEnd ? I18n.tr('产物到这一帧结束（半秒内偏差）') : I18n.tr('产物从这一帧开始');
   }
 
   ClipPlan get _plan => buildClipPlan(
@@ -164,7 +165,7 @@ class _ClipPageState extends State<ClipPage> {
   );
 
   Future<void> _pickInput() async {
-    final file = await openFile(acceptedTypeGroups: const [_videoTypes]);
+    final file = await openFile(acceptedTypeGroups: [_videoTypes]);
     if (file == null) {
       return;
     }
@@ -306,7 +307,7 @@ class _ClipPageState extends State<ClipPage> {
     }
     final parsed = parseTimestamp(_startCtrl.text);
     if (parsed == null) {
-      _snack('开始时间格式不对，用 00:01:23.500 或 83.5');
+      _snack(I18n.tr('开始时间格式不对，用 00:01:23.500 或 83.5'));
       _syncFields(force: true);
       return;
     }
@@ -332,7 +333,7 @@ class _ClipPageState extends State<ClipPage> {
     }
     final parsed = parseTimestamp(_endCtrl.text);
     if (parsed == null) {
-      _snack('结束时间格式不对，用 00:01:23.500 或 83.5');
+      _snack(I18n.tr('结束时间格式不对，用 00:01:23.500 或 83.5'));
       _syncFields(force: true);
       return;
     }
@@ -389,15 +390,15 @@ class _ClipPageState extends State<ClipPage> {
     final input = _inputPath;
     final output = _outputPath;
     if (input == null) {
-      _snack('先选择一个视频文件');
+      _snack(I18n.tr('先选择一个视频文件'));
       return;
     }
     if (output == null || output.isEmpty) {
-      _snack('先选择输出位置');
+      _snack(I18n.tr('先选择输出位置'));
       return;
     }
     if (!File(input).existsSync()) {
-      _snack('输入文件不存在');
+      _snack(I18n.tr('输入文件不存在'));
       return;
     }
     final plan = _plan;
@@ -445,7 +446,7 @@ class _ClipPageState extends State<ClipPage> {
 
   void _snack(String message) {
     ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(message)));
+        .showSnackBar(SnackBar(content: T(message)));
   }
 
   @override
@@ -456,11 +457,9 @@ class _ClipPageState extends State<ClipPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const PageHeader(
-            title: '截取片段',
-            description:
-                '从视频里取出一段单独保存。拖动时间线上的两个手柄选择起止点，'
-                '滚轮缩放、拖空白处平移。文件只在本机处理。',
+          PageHeader(
+            title: I18n.tr('截取片段'),
+            description: I18n.tr('从视频里取出一段单独保存。拖动时间线上的两个手柄选择起止点，' '滚轮缩放、拖空白处平移。文件只在本机处理。'),
           ),
           const SizedBox(height: 24),
           LayoutBuilder(
@@ -496,17 +495,17 @@ class _ClipPageState extends State<ClipPage> {
         children: [
           Row(
             children: [
-              Text('源文件', style: AkText.panelTitle),
+              T('源文件', style: AkText.panelTitle),
               const Spacer(),
               if (_inputPath != null)
-                TextButton(onPressed: _pickInput, child: const Text('重新选择')),
+                TextButton(onPressed: _pickInput, child: const T('重新选择')),
             ],
           ),
           const SizedBox(height: 16),
           if (_inputPath == null)
             _singlePicker()
           else ...[
-            Text(
+            T(
               p.basename(_inputPath!),
               style: AkText.body.copyWith(
                 color: AkColors.textStrong,
@@ -516,7 +515,7 @@ class _ClipPageState extends State<ClipPage> {
               overflow: TextOverflow.ellipsis,
             ),
             const SizedBox(height: 4),
-            Text(
+            T(
               p.dirname(_inputPath!),
               style: AkText.micro,
               maxLines: 1,
@@ -529,7 +528,7 @@ class _ClipPageState extends State<ClipPage> {
                 child: LinearProgressIndicator(minHeight: 2),
               )
             else if (_probeError != null)
-              Text(
+              T(
                 _probeError!,
                 style: AkText.body.copyWith(color: AkColors.danger),
               )
@@ -540,13 +539,13 @@ class _ClipPageState extends State<ClipPage> {
             const SizedBox(height: 16),
             Row(
               children: [
-                Text('时间线', style: AkText.label),
+                T('时间线', style: AkText.label),
                 const Spacer(),
                 TextButton(
                   onPressed: _durationMs > 0
                       ? () => _applyRange(0, _durationMs)
                       : null,
-                  child: const Text('整段'),
+                  child: const T('整段'),
                 ),
               ],
             ),
@@ -574,13 +573,12 @@ class _ClipPageState extends State<ClipPage> {
               onFramesNeeded: _onFramesNeeded,
             ),
             const SizedBox(height: 8),
-            Text(_timelineHint(), style: AkText.micro),
+            T(_timelineHint(), style: AkText.micro),
           ],
           const SizedBox(height: 20),
           const Divider(height: 1),
           const SizedBox(height: 16),
-          Text(
-            '起点会落在关键帧上；终点按时间截断，可能有半秒内偏差。'
+          T('起点会落在关键帧上；终点按时间截断，可能有半秒内偏差。'
             '片段会重新编码，输出默认放在源文件旁边。',
             style: AkText.micro,
           ),
@@ -611,8 +609,8 @@ class _ClipPageState extends State<ClipPage> {
                 label: _activeLabel,
                 timeLabel: formatTimestamp(_activeMs),
                 emptyText: !_hasVideo
-                    ? '这个文件没有画面'
-                    : (source.framesHint ?? '正在读取画面…'),
+                    ? I18n.tr('这个文件没有画面')
+                    : (source.framesHint ?? I18n.tr('正在读取画面…')),
               ),
             ),
             const SizedBox(width: 14),
@@ -620,9 +618,9 @@ class _ClipPageState extends State<ClipPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('画面参考', style: AkText.label),
+                  T('画面参考', style: AkText.label),
                   const SizedBox(height: 2),
-                  Text(
+                  T(
                     formatTimestamp(_activeMs),
                     style: AkText.mono.copyWith(
                       color: AkColors.textStrong,
@@ -630,9 +628,9 @@ class _ClipPageState extends State<ClipPage> {
                     ),
                   ),
                   const SizedBox(height: 4),
-                  Text(_activeHint, style: AkText.micro),
+                  T(_activeHint, style: AkText.micro),
                   const Spacer(),
-                  Text('拖动入点/出点或悬停时间线，画面会跟着变。', style: AkText.micro),
+                  T('拖动入点/出点或悬停时间线，画面会跟着变。', style: AkText.micro),
                 ],
               ),
             ),
@@ -649,11 +647,10 @@ class _ClipPageState extends State<ClipPage> {
         FilledButton.icon(
           onPressed: _pickInput,
           icon: const Icon(Icons.insert_drive_file_outlined, size: 18),
-          label: const Text('打开文件'),
+          label: const T('打开文件'),
         ),
         const SizedBox(height: 8),
-        Text(
-          '支持 mkv / mp4 / mov / avi / ts / webm 等；截取只处理单个文件。',
+        T('支持 mkv / mp4 / mov / avi / ts / webm 等；截取只处理单个文件。',
           style: AkText.micro,
         ),
       ],
@@ -662,21 +659,21 @@ class _ClipPageState extends State<ClipPage> {
 
   String _timelineHint() {
     if (_durationMs <= 0) {
-      return '选择文件后这里会显示缩略图、音频包络与关键帧。';
+      return I18n.tr('选择文件后这里会显示缩略图、音频包络与关键帧。');
     }
     if (_indexing) {
-      return '正在读取波形与关键帧…（不影响选时间）';
+      return I18n.tr('正在读取波形与关键帧…（不影响选时间）');
     }
     final index = _index;
     if (index == null) {
-      return '无法读取波形与关键帧，时间线只显示刻度。';
+      return I18n.tr('无法读取波形与关键帧，时间线只显示刻度。');
     }
-    final wave = index.hasWave ? '音频包络' : '无音频包络';
+    final wave = index.hasWave ? I18n.tr('音频包络') : I18n.tr('无音频包络');
     final keys = index.keyframesMs.isEmpty
-        ? '未读到关键帧'
+        ? I18n.tr('未读到关键帧')
         : '${index.keyframesMs.length} 个关键帧';
     final strip = _source?.strip?.frames.isNotEmpty ?? false
-        ? '缩略图条按整片均匀采样 · '
+        ? I18n.tr('缩略图条按整片均匀采样 · ')
         : '';
     return '$strip$wave · $keys · 滚轮缩放，拖空白处平移，双击回到全片';
   }
@@ -688,7 +685,7 @@ class _ClipPageState extends State<ClipPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('截取范围', style: AkText.panelTitle),
+          T('截取范围', style: AkText.panelTitle),
           const SizedBox(height: 14),
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -698,8 +695,8 @@ class _ClipPageState extends State<ClipPage> {
                   controller: _startCtrl,
                   focusNode: _startFocus,
                   style: AkText.mono.copyWith(color: AkColors.textStrong),
-                  decoration: const InputDecoration(
-                    labelText: '开始',
+                  decoration: InputDecoration(
+                    labelText: I18n.tr('开始'),
                     hintText: '00:00:00.000',
                     counterText: '',
                   ),
@@ -708,15 +705,15 @@ class _ClipPageState extends State<ClipPage> {
               ),
               const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 8, vertical: 14),
-                child: Text('→', style: AkText.body),
+                child: T('→', style: AkText.body),
               ),
               Expanded(
                 child: TextField(
                   controller: _endCtrl,
                   focusNode: _endFocus,
                   style: AkText.mono.copyWith(color: AkColors.textStrong),
-                  decoration: const InputDecoration(
-                    labelText: '结束',
+                  decoration: InputDecoration(
+                    labelText: I18n.tr('结束'),
                     hintText: '00:00:30.000',
                     counterText: '',
                   ),
@@ -728,20 +725,18 @@ class _ClipPageState extends State<ClipPage> {
           const SizedBox(height: 10),
           Row(
             children: [
-              Text(
-                '片段时长 ${prettyClipDuration(math.max(0, _endMs - _startMs))}',
+              T('片段时长 ${prettyClipDuration(math.max(0, _endMs - _startMs))}',
                 style: AkText.micro,
               ),
               const Spacer(),
-              Text(
-                '全片 ${formatTimestamp(_durationMs, withMillis: false)}',
+              T('全片 ${formatTimestamp(_durationMs, withMillis: false)}',
                 style: AkText.micro,
               ),
             ],
           ),
           if (_snapNotice != null) ...[
             const SizedBox(height: 6),
-            Text(
+            T(
               _snapNotice!,
               style: AkText.micro.copyWith(color: AkColors.accent),
             ),
@@ -749,16 +744,16 @@ class _ClipPageState extends State<ClipPage> {
           const SizedBox(height: 22),
           const Divider(height: 1),
           const SizedBox(height: 18),
-          Text('输出', style: AkText.panelTitle),
+          T('输出', style: AkText.panelTitle),
           const SizedBox(height: 14),
-          Text('容器', style: AkText.label),
+          T('容器', style: AkText.label),
           const SizedBox(height: 8),
           Wrap(
             spacing: 8,
             runSpacing: 8,
             children: [
               _chip(
-                '同源',
+                I18n.tr('同源'),
                 _container == 'source',
                 () => _selectContainer('source'),
               ),
@@ -770,9 +765,9 @@ class _ClipPageState extends State<ClipPage> {
           const SizedBox(height: 18),
           Row(
             children: [
-              Text('质量', style: AkText.label),
+              T('质量', style: AkText.label),
               const Spacer(),
-              Text(
+              T(
                 _quality.round().toString(),
                 style: AkText.mono.copyWith(color: AkColors.textStrong),
               ),
@@ -785,19 +780,19 @@ class _ClipPageState extends State<ClipPage> {
             divisions: 20,
             onChanged: (value) => setState(() => _quality = value),
           ),
-          Text(
+          T(
             '视频 ${_videoCodec == 'hevc' ? 'H.265' : 'H.264'} + 音频 AAC；'
             '数值越大越清晰、文件越大',
             style: AkText.micro,
           ),
           const SizedBox(height: 18),
-          Text('输出文件', style: AkText.label),
+          T('输出文件', style: AkText.label),
           const SizedBox(height: 8),
           Row(
             children: [
               Expanded(
-                child: Text(
-                  _outputPath == null ? '尚未选择' : p.basename(_outputPath!),
+                child: T(
+                  _outputPath == null ? I18n.tr('尚未选择') : p.basename(_outputPath!),
                   style: AkText.body.copyWith(
                     color: _outputPath == null ? AkColors.faint : AkColors.text,
                   ),
@@ -806,12 +801,12 @@ class _ClipPageState extends State<ClipPage> {
                 ),
               ),
               const SizedBox(width: 8),
-              OutlinedButton(onPressed: _pickOutput, child: const Text('选择')),
+              OutlinedButton(onPressed: _pickOutput, child: const T('选择')),
             ],
           ),
           if (_outputPath != null) ...[
             const SizedBox(height: 4),
-            Text(
+            T(
               p.dirname(_outputPath!),
               style: AkText.micro,
               maxLines: 1,
@@ -823,14 +818,14 @@ class _ClipPageState extends State<ClipPage> {
           const SizedBox(height: 20),
           FilledButton(
             onPressed: canSubmit ? _submit : null,
-            child: Text(
+            child: T(
               _submitting
-                  ? '提交中…'
+                  ? I18n.tr('提交中…')
                   : _inputPath == null
-                  ? '先选择视频文件'
+                  ? I18n.tr('先选择视频文件')
                   : plan.ok
-                  ? '开始截取'
-                  : '当前范围无法截取',
+                  ? I18n.tr('开始截取')
+                  : I18n.tr('当前范围无法截取'),
             ),
           ),
         ],
@@ -843,23 +838,23 @@ class _ClipPageState extends State<ClipPage> {
       return _decisionBox(
         color: AkColors.muted,
         icon: Icons.crop_free,
-        title: '等待选择视频',
-        detail: '选一个文件后，这里是将保存的片段。',
+        title: I18n.tr('等待选择视频'),
+        detail: I18n.tr('选一个文件后，这里是将保存的片段。'),
       );
     }
     if (_probing) {
       return _decisionBox(
         color: AkColors.muted,
         icon: Icons.hourglass_empty,
-        title: '正在读取媒体信息',
-        detail: '拿到时长后就能拖动时间线。',
+        title: I18n.tr('正在读取媒体信息'),
+        detail: I18n.tr('拿到时长后就能拖动时间线。'),
       );
     }
     if (_probeError != null) {
       return _decisionBox(
         color: AkColors.danger,
         icon: Icons.error_outline,
-        title: '无法读取这个文件',
+        title: I18n.tr('无法读取这个文件'),
         detail: _probeError!,
       );
     }
@@ -867,8 +862,8 @@ class _ClipPageState extends State<ClipPage> {
       return _decisionBox(
         color: AkColors.danger,
         icon: Icons.error_outline,
-        title: '无法确定片长',
-        detail: '这个来源没有可用时长，不能按时间截取。',
+        title: I18n.tr('无法确定片长'),
+        detail: I18n.tr('这个来源没有可用时长，不能按时间截取。'),
       );
     }
     if (plan.error != null) {
@@ -876,7 +871,7 @@ class _ClipPageState extends State<ClipPage> {
         color: AkColors.danger,
         icon: Icons.error_outline,
         title: plan.error!,
-        detail: '拖动时间线或直接改上面的时间。',
+        detail: I18n.tr('拖动时间线或直接改上面的时间。'),
         warnings: plan.warnings,
       );
     }
@@ -888,7 +883,7 @@ class _ClipPageState extends State<ClipPage> {
       detail:
           '${prettyClipDuration(plan.durationMs)} · ${_outputExt.toUpperCase()} · '
           '${_videoCodec == 'hevc' ? 'H.265' : 'H.264'} + AAC',
-      note: '重新编码；起点对齐关键帧，终点可能有半秒内偏差。',
+      note: I18n.tr('重新编码；起点对齐关键帧，终点可能有半秒内偏差。'),
       warnings: plan.warnings,
     );
   }
@@ -917,7 +912,7 @@ class _ClipPageState extends State<ClipPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                T(
                   title,
                   style: AkText.body.copyWith(
                     color: color == AkColors.muted
@@ -928,18 +923,18 @@ class _ClipPageState extends State<ClipPage> {
                 ),
                 if (detail.isNotEmpty) ...[
                   const SizedBox(height: 4),
-                  Text(detail, style: AkText.micro),
+                  T(detail, style: AkText.micro),
                 ],
                 if (note != null && note.isNotEmpty) ...[
                   const SizedBox(height: 4),
-                  Text(
+                  T(
                     note,
                     style: AkText.micro.copyWith(color: AkColors.faint),
                   ),
                 ],
                 for (final warning in warnings) ...[
                   const SizedBox(height: 4),
-                  Text(
+                  T(
                     warning,
                     style: AkText.micro.copyWith(color: AkColors.accent),
                   ),
@@ -954,7 +949,7 @@ class _ClipPageState extends State<ClipPage> {
 
   Widget _chip(String label, bool selected, VoidCallback onTap) {
     return ChoiceChip(
-      label: Text(label),
+      label: T(label),
       selected: selected,
       showCheckmark: false,
       visualDensity: VisualDensity.compact,

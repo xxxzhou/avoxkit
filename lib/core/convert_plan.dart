@@ -1,4 +1,5 @@
 import 'package:path/path.dart' as p;
+import './i18n.dart';
 
 /// 转换页的输出设置。'source' = 跟源文件一致。
 class ConvertSettings {
@@ -144,9 +145,9 @@ ConversionPlan buildConversionPlan({
     final scaling = _targetSize(source, settings.height, warnings);
     if (scaling == null) {
       return ConversionPlan(
-        reason: '无法读取源视频分辨率',
+        reason: I18n.tr('无法读取源视频分辨率'),
         detail: '',
-        error: '无法读取源视频分辨率，不能调整输出大小',
+        error: I18n.tr('无法读取源视频分辨率，不能调整输出大小'),
       );
     }
     outWidth = scaling.$1;
@@ -173,14 +174,14 @@ ConversionPlan buildConversionPlan({
       );
       if (encodeVideo == null) {
         return ConversionPlan(
-          reason: '本机没有可用的视频编码器',
+          reason: I18n.tr('本机没有可用的视频编码器'),
           detail: '',
-          error: '本机没有可用的 H.264 / H.265 编码器',
+          error: I18n.tr('本机没有可用的 H.264 / H.265 编码器'),
         );
       }
       if (!containerStoresVideo(targetContainer, encodeVideo)) {
         return ConversionPlan(
-          reason: '目标容器不支持该视频编码',
+          reason: I18n.tr('目标容器不支持该视频编码'),
           detail: '',
           error: '${prettyContainer(targetContainer)} 不能装 '
               '${prettyCodec(encodeVideo)}，请换容器或换编码',
@@ -211,9 +212,9 @@ ConversionPlan buildConversionPlan({
       );
       if (encodeAudio == null) {
         return ConversionPlan(
-          reason: '本机没有可用的音频编码器',
+          reason: I18n.tr('本机没有可用的音频编码器'),
           detail: '',
-          error: '本机没有可用的 AAC / MP3 编码器',
+          error: I18n.tr('本机没有可用的 AAC / MP3 编码器'),
         );
       }
       if (settings.audio == 'source' && !stores) {
@@ -225,7 +226,7 @@ ConversionPlan buildConversionPlan({
       }
       if (!containerStoresAudio(targetContainer, encodeAudio)) {
         return ConversionPlan(
-          reason: '目标容器不支持该音频编码',
+          reason: I18n.tr('目标容器不支持该音频编码'),
           detail: '',
           error: '${prettyContainer(targetContainer)} 不能装 '
               '${prettyCodec(encodeAudio)}，请换容器或换编码',
@@ -257,17 +258,17 @@ ConversionPlan buildConversionPlan({
   }
 
   if (videoMode == null && audioMode == null) {
-    return const ConversionPlan(
-      reason: '源文件没有可处理的轨道',
+    return  ConversionPlan(
+      reason: I18n.tr('源文件没有可处理的轨道'),
       detail: '',
-      error: '源文件没有视频或音频轨道',
+      error: I18n.tr('源文件没有视频或音频轨道'),
     );
   }
   if (videoMode == null && audioMode == 'encode') {
-    return const ConversionPlan(
-      reason: '源文件没有视频轨',
+    return  ConversionPlan(
+      reason: I18n.tr('源文件没有视频轨'),
       detail: '',
-      error: '源文件没有视频轨；音频重编码请使用「提取音频」',
+      error: I18n.tr('源文件没有视频轨；音频重编码请使用「提取音频」'),
     );
   }
 
@@ -276,7 +277,7 @@ ConversionPlan buildConversionPlan({
       targetContainer == source.container;
   if (noop) {
     return ConversionPlan(
-      reason: '输出设置与原文件一致，无需转换',
+      reason: I18n.tr('输出设置与原文件一致，无需转换'),
       detail: _detail(source, targetContainer, videoMode, audioMode,
           outWidth, outHeight, encodeVideo, encodeAudio),
       videoMode: videoMode,
@@ -328,13 +329,13 @@ ConversionPlan buildConversionPlan({
   }
 
   final reason = switch ((videoMode, audioMode)) {
-    ('copy', 'copy') => '直接封装，不重新编码',
-    ('copy', 'encode') => '视频直拷，重新编码音频',
-    ('encode', 'copy') => '重新编码视频，音频直拷',
-    ('encode', 'encode') => '重新编码视频和音频',
-    ('encode', null) => '重新编码视频',
-    ('copy', null) => '直接封装，不重新编码',
-    _ => '直接封装，不重新编码',
+    ('copy', 'copy') => I18n.tr('直接封装，不重新编码'),
+    ('copy', 'encode') => I18n.tr('视频直拷，重新编码音频'),
+    ('encode', 'copy') => I18n.tr('重新编码视频，音频直拷'),
+    ('encode', 'encode') => I18n.tr('重新编码视频和音频'),
+    ('encode', null) => I18n.tr('重新编码视频'),
+    ('copy', null) => I18n.tr('直接封装，不重新编码'),
+    _ => I18n.tr('直接封装，不重新编码'),
   };
 
   return ConversionPlan(
@@ -377,7 +378,7 @@ ConversionPlan buildConversionPlan({
     return (null, null);
   }
   if (height > sh) {
-    warnings.add('输出分辨率高于源文件，会放大画面');
+    warnings.add(I18n.tr('输出分辨率高于源文件，会放大画面'));
   }
   return (width, height);
 }
@@ -452,28 +453,28 @@ String _detail(
   final parts = <String>[];
   parts.add(
     targetContainer == source.container
-        ? '容器保持 ${prettyContainer(source.container)}'
-        : '容器 ${prettyContainer(source.container)} → '
-            '${prettyContainer(targetContainer)}',
+        ? I18n.trAuto('容器保持 ${prettyContainer(source.container)}')
+        : I18n.trAuto('容器 ${prettyContainer(source.container)} → '
+            '${prettyContainer(targetContainer)}'),
   );
   if (source.hasVideo) {
     final from = prettyCodec(source.videoCodec);
     if (videoMode == 'copy') {
-      parts.add('视频 $from 直拷');
+      parts.add(I18n.trAuto('视频 $from 直拷'));
     } else {
       final to = prettyCodec(encodeVideo ?? '');
       final size = outWidth != null && outHeight != null
           ? ' · $outWidth×$outHeight'
           : '';
-      parts.add('视频 $from → $to$size');
+      parts.add('${I18n.trAuto('视频 $from → $to')}$size');
     }
   }
   if (source.hasAudio) {
     final from = prettyCodec(source.audioCodec ?? '');
     if (audioMode == 'copy') {
-      parts.add('音频 $from 直拷');
+      parts.add(I18n.trAuto('音频 $from 直拷'));
     } else {
-      parts.add('音频 $from → ${prettyCodec(encodeAudio ?? '')}');
+      parts.add(I18n.trAuto('音频 $from → ${prettyCodec(encodeAudio ?? '')}'));
     }
   }
   return parts.join(' · ');
@@ -619,7 +620,7 @@ String prettyCodec(String codec) {
       return 'PCM';
     default:
       final value = codec.trim();
-      return value.isEmpty ? '未知' : value.toUpperCase();
+      return value.isEmpty ? I18n.tr('未知') : value.toUpperCase();
   }
 }
 

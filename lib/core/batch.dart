@@ -3,15 +3,16 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 
 import 'folder_scan.dart';
+import './i18n.dart';
 
 /// §15.4 的三种输出策略
 enum OutputPolicy { sidecar, mirror, flat }
 
 extension OutputPolicyLabel on OutputPolicy {
   String get label => switch (this) {
-        OutputPolicy.sidecar => '源文件旁',
-        OutputPolicy.mirror => '输出目录（保留子目录）',
-        OutputPolicy.flat => '输出目录（平铺）',
+        OutputPolicy.sidecar => I18n.tr('源文件旁'),
+        OutputPolicy.mirror => I18n.tr('输出目录（保留子目录）'),
+        OutputPolicy.flat => I18n.tr('输出目录（平铺）'),
       };
 }
 

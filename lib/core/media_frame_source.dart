@@ -7,7 +7,7 @@ import 'engine.dart';
 import 'media_frames.dart';
 import 'media_index.dart';
 
-/// 一个源文件的画面与波形缓存。页面/组件只问"这一刻的画面", 取帧、去抖、
+/// 一个源文件的画面与波形缓存。页面/组件只问I18n.tr("这一刻的画面"), 取帧、去抖、
 /// 缓存都在这里, 组件里不碰 FFI, 也不会在 build 里发请求。
 class MediaFrameSource extends ChangeNotifier {
   MediaFrameSource({
