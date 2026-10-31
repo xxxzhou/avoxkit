@@ -9,6 +9,7 @@
 | [ui.md](ui.md) | Flutter 端视觉与组件基准 | 当前基准 |
 | [testing.md](testing.md) | 无头测试与回归步骤 | 内部测试 |
 | [macos-porting.md](macos-porting.md) | macOS 移植：环境、构建、打包与验收 | 已落地（arm64）：构建/无头/GUI 冒烟通过，待签名公证 |
+| [mas-spike.md](mas-spike.md) | macOS 沙盒 / Mac App Store 最小验证 | 进行中（mas 分支，未提审） |
 | [m1-plan.md](m1-plan.md) | M1 计划口径 | 历史 |
 | [m1-kickoff.md](m1-kickoff.md) | M1 实测与落地记录 | 历史 |
 

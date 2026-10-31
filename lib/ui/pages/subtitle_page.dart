@@ -4,6 +4,7 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 
+import '../../core/app_paths.dart';
 import '../../core/batch.dart';
 import '../../core/engine.dart';
 import '../../core/folder_source.dart';
@@ -116,8 +117,8 @@ class _SubtitlePageState extends State<SubtitlePage> {
         )
       : null;
 
-  String _suggestedOutput(String input) => p.join(
-        p.dirname(input),
+  String _suggestedOutput(String input) => AppPaths.suggested(
+        input,
         '${p.basenameWithoutExtension(input)}.srt',
       );
 

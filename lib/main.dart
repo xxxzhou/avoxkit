@@ -2,6 +2,7 @@ import 'dart:ui' show AppExitResponse;
 
 import 'package:flutter/material.dart';
 
+import 'core/app_paths.dart';
 import 'core/compat_options.dart';
 import 'core/engine.dart';
 import 'core/task_store.dart';
@@ -11,6 +12,7 @@ import 'ui/tokens.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await AppPaths.init();
   await CompatOptions.load();
   late final Engine engine;
   try {

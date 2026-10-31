@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:path/path.dart' as p;
 
 import '../native/ak_bindings.dart';
+import 'app_paths.dart';
 
 /// 图像修复支持的输入扩展名（avox 的 stb 解码 + opencv 兜底）。
 const imageExtensions = <String>[
@@ -111,8 +112,8 @@ String suggestImageOutput(String input, {String? extension}) {
   final ext = extension == null || extension.isEmpty
       ? imageOutputExtension(input)
       : (extension.startsWith('.') ? extension : '.$extension');
-  return p.join(
-    p.dirname(input),
+  return AppPaths.suggested(
+    input,
     '${p.basenameWithoutExtension(input)}-repaired$ext',
   );
 }

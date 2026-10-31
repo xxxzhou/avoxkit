@@ -6,7 +6,14 @@
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-DIST=${DIST:-"$ROOT/dist/avoxkit-macos-arm64"}
+MAS=${MAS:-0}
+if [ "$MAS" = "1" ]; then
+  ENTITLEMENTS="$ROOT/macos/Runner/Release-MAS.entitlements"
+  DIST=${DIST:-"$ROOT/dist/avoxkit-macos-arm64-mas"}
+else
+  ENTITLEMENTS="$ROOT/macos/Runner/Release.entitlements"
+  DIST=${DIST:-"$ROOT/dist/avoxkit-macos-arm64"}
+fi
 AVOX_ROOT=${AVOX_ROOT:-"$ROOT/../avox"}
 AVOX_OUT_DIR=${AVOX_OUT_DIR:-"$AVOX_ROOT/build/macos/avox/install/aarch64/Release"}
 AVOX_LIBRARY=${AVOX_LIBRARY:-"$AVOX_ROOT/../avox_library"}
@@ -61,7 +68,11 @@ if [ ! -f "$ICON_FONT" ] || [ -n "$NEWEST_DART" ]; then
   rm -rf "$ROOT/.dart_tool/flutter_build" "$ROOT/build/flutter_assets"
 fi
 
-"$FLUTTER" build macos --release
+FLUTTER_ARGS=(build macos --release)
+if [ "$MAS" = "1" ]; then
+  FLUTTER_ARGS+=(--dart-define=AVOXKIT_SANDBOX=true)
+fi
+"$FLUTTER" "${FLUTTER_ARGS[@]}"
 [ -d "$APP" ] || die "Flutter 产物不存在: $APP"
 
 STAGING="$DIST.staging-$$"
@@ -115,7 +126,7 @@ find "$STAGED_APP/Contents/Frameworks" -name '*.framework' -type d -print0 |
       --sign "$CODESIGN_IDENTITY" "$fw"
   done
 codesign --force "${SIGN_FLAGS[@]}" \
-  --entitlements "$ROOT/macos/Runner/Release.entitlements" \
+  --entitlements "$ENTITLEMENTS" \
   --sign "$CODESIGN_IDENTITY" "$STAGED_APP"
 codesign --verify --deep --strict "$STAGED_APP"
 

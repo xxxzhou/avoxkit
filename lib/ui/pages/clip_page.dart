@@ -6,6 +6,7 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 
+import '../../core/app_paths.dart';
 import '../../core/clip_plan.dart';
 import '../../core/engine.dart';
 import '../../core/media_frame_source.dart';
@@ -157,8 +158,8 @@ class _ClipPageState extends State<ClipPage> {
     endMs: _endMs,
   );
 
-  String _suggestedOutput(String input) => p.join(
-    p.dirname(input),
+  String _suggestedOutput(String input) => AppPaths.suggested(
+    input,
     '${p.basenameWithoutExtension(input)}.clip.$_outputExt',
   );
 

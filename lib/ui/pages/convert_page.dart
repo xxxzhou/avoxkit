@@ -4,6 +4,7 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 
+import '../../core/app_paths.dart';
 import '../../core/batch.dart';
 import '../../core/convert_plan.dart';
 import '../../core/engine.dart';
@@ -151,8 +152,8 @@ class _ConvertPageState extends State<ConvertPage> {
         )
       : null;
 
-  String _suggestedOutput(String input) => p.join(
-        p.dirname(input),
+  String _suggestedOutput(String input) => AppPaths.suggested(
+        input,
         '${p.basenameWithoutExtension(input)}.converted.'
         '${_extensionFor(input)}',
       );
