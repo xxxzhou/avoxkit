@@ -443,19 +443,19 @@ open dist/avoxkit-macos-arm64/avoxkit.app
 `ass_test.mkv`，probe 显示 H.264+AAC 30s，改 MP4 直接封装完成，产物
 `ffmpeg -i` 为 H.264+AAC 30s；Cmd+Q 退出日志完整、无残留进程、无新崩溃。
 
-录屏整链（同一天，`panvox-dev` 自签包）：
+录屏整链（同一天，`avoxkit-dev` 自签包）：
 
 - 首次录屏前授予「屏幕与系统录音」+「麦克风」；自签证书固定后重建安装包，
   授权仍然有效，不再弹 TCC 提示；
 - 43.8s、60fps、0 dropped，落盘 `screen.mkv`（H.264 1470×956）、
   `audio/mic.wav`（f32 48kHz mono，8,425,472 字节，ffmpeg 时长 43.88s）、
   `capture.mkv`（H.264+AAC）；
-- 工程导出到跨卷目录 `/Volumes/PSSD/...` 成功（`ffmpeg -i` 为
+- 工程导出到跨卷目录（外置盘）成功（`ffmpeg -i` 为
   H.264 1920×1080 + AAC 48kHz stereo），「打开所在文件夹」在 Finder 中选中
   成片；
 - `flutter test` 98 项全部通过。
 
-当前本地/内测包用固定自签证书 `panvox-dev`（`CODESIGN_IDENTITY` 可覆盖），
+当前本地/内测包用固定自签证书 `avoxkit-dev`（`CODESIGN_IDENTITY` 可覆盖），
 对外分发仍需 Developer ID 签名 + 公证（见 `docs/macos-porting.md` §6.3）。
 
 ## 3. 一次跑完
