@@ -21,10 +21,10 @@ productbuild --component dist/avoxkit-macos-arm64-mas/avoxkit.app /Applications 
   --keychain "$HOME/Library/Keychains/avoxkit-signing.keychain-db" dist/avoxkit.pkg
 ```
 
-本地 QA / 截图包（自签 `panvox-dev`，不带 Team 标识，能直接启动）：
+本地 QA / 截图包（自签 `avoxkit-dev`，不带 Team 标识，能直接启动）：
 
 ```bash
-MAS=1 CODESIGN_IDENTITY=panvox-dev MAS_PROFILE= \
+MAS=1 CODESIGN_IDENTITY=avoxkit-dev MAS_PROFILE= \
   DIST="$PWD/dist/avoxkit-mas-demo" DEMO=1 ./script/build_macos.sh
 ```
 
@@ -66,7 +66,7 @@ MAS=1 CODESIGN_IDENTITY=panvox-dev MAS_PROFILE= \
 
 ## 多语言（2026-10-31）
 
-与 panvox 同一组 15 个商店 locale：`zh-Hans / en-US / zh-Hant / ja / ko / fr-FR /
+15 个商店 locale：`zh-Hans / en-US / zh-Hant / ja / ko / fr-FR /
 de-DE / es-ES / it / pt-PT / pt-BR / ru / id / th / vi`。
 
 - UI：以中文原文为 key 的轻量 i18n（`lib/core/i18n.dart` 的 `tr()/T`），
