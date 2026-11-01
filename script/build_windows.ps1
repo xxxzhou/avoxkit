@@ -1,7 +1,11 @@
 param(
   [string]$Flutter = "D:/Work/flutter/bin/flutter",
   [string]$Config = "Release",
-  [string]$Dist = "dist/avoxkit-windows-x64"
+  [string]$Dist = "dist/avoxkit-windows-x64",
+  # -Msix  出侧载冒烟包(需 build/avoxkit-store.pfx, 用 script/msix_sign.ps1 生成)
+  # -Store 出商店上传包(免签; 与 -Msix 互斥)
+  [switch]$Msix,
+  [switch]$Store
 )
 
 $ErrorActionPreference = "Stop"
@@ -61,6 +65,26 @@ if (-not (Test-Path (Join-Path $src "avoxkit.exe"))) {
 $running = Get-Process avoxkit -ErrorAction SilentlyContinue
 if ($running) {
   throw "avoxkit.exe is running; close it before packaging"
+}
+
+if ($Msix -or $Store) {
+  if ($Msix -and $Store) { throw "-Msix 与 -Store 互斥: 侧载签名包与商店免签包分开出" }
+  if ($Msix -and -not (Test-Path (Join-Path $root "build/avoxkit-store.pfx"))) {
+    throw "缺 build/avoxkit-store.pfx: 先跑 powershell -ExecutionPolicy Bypass -File script/msix_sign.ps1"
+  }
+  # msix:create 内部会重跑 flutter build, 属预期; 收尾交互提示自动喂 n
+  $dart = "D:/Work/flutter/bin/dart.bat"
+  if (-not (Test-Path $dart)) { $cmd = Get-Command dart -ErrorAction SilentlyContinue; if (-not $cmd) { throw "dart not found" }; $dart = $cmd.Source }
+  $flag = ""
+  if ($Store) { $flag = " --store" }
+  Push-Location $root
+  try {
+    cmd /c "echo n | `"$dart`" run msix:create$flag"
+    if ($LASTEXITCODE -ne 0) { throw "msix:create failed" }
+  } finally { Pop-Location }
+  $msixPath = Join-Path $src "avoxkit.msix"
+  if (-not (Test-Path $msixPath)) { throw "avoxkit.msix not found at $src" }
+  Write-Host ("msix: {0} ({1:N1} MB)" -f $msixPath, ((Get-Item $msixPath).Length/1MB))
 }
 
 # 先拷到临时目录再整体换入: 直接删 dist 重建时, 用户在窗口期启动会

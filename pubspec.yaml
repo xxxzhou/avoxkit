@@ -19,6 +19,24 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  msix: ^3.16.8
+
+# Windows 商店 MSIX 配置; identity_name 在 Partner Center 建品保留名后
+# 以「产品标识」页回读值为准(见 docs/release/windows-store-release.md)
+msix_config:
+  display_name: Avoxkit
+  publisher_display_name: zhouxin
+  identity_name: zhouxin.Avoxkit
+  publisher: CN=31E15229-A9B5-4A96-B8F3-8F02865815FF
+  # 第 4 段恒 0 是商店硬约束
+  msix_version: 0.1.0.0
+  logo_path: windows/runner/resources/app_icon_1024.png
+  # 侧载冒烟用自签证书(主题须与 publisher 一致); 商店上传包走 --store 免签。
+  # pfx 由 script/msix_sign.ps1 生成到 build/avoxkit-store.pfx(gitignore, 不入仓)
+  certificate_path: build/avoxkit-store.pfx
+  certificate_password: avx123
+  capabilities: internetClient,runFullTrust,microphone
+  languages: zh-cn
 
 flutter:
   uses-material-design: true
