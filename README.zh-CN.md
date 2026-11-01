@@ -6,7 +6,7 @@ Avoxkit 是一个桌面音视频工具箱：录屏、转换、截取片段、提
 
 > Flutter · Windows x64 / macOS arm64 · AGPLv3 · v0.1.0
 
-[![Platform](https://img.shields.io/badge/Platform-Windows%20x64%20%7C%20macOS%20arm64-blue)(https://github.com/xxxzhou/avoxkit/releases/latest)
+[![Platform](https://img.shields.io/badge/Platform-Windows%20x64%20%7C%20macOS%20arm64-blue)](https://github.com/xxxzhou/avoxkit/releases/latest)
 [![License](https://img.shields.io/badge/License-AGPL_v3-important)](LICENSE)
 [![Version](https://img.shields.io/badge/Version-0.1.0-green)]()
 
