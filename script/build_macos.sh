@@ -14,13 +14,13 @@ ONNX_DYLIB=${ONNX_DYLIB:-"$AVOX_LIBRARY/3rdparty/library/darwin/onnxruntime/lib/
 KIT_DIR="$ROOT/third_party/ffmpeg/kit-macos"
 APP="$ROOT/build/macos/Build/Products/Release/avoxkit.app"
 SKIP_KIT_VERIFY=${SKIP_KIT_VERIFY:-0}
-# 默认用 panvox-dev 自签证书: ad-hoc 每次重建 cdhash 都变, TCC 屏幕录制/
+# 默认用 avoxkit-dev 自签证书: ad-hoc 每次重建 cdhash 都变, TCC 屏幕录制/
 # 麦克风授权随即失效; 自签固定证书的 designated requirement 跨重建不变。
 CODESIGN_IDENTITY=${CODESIGN_IDENTITY:-}
 if [ -z "$CODESIGN_IDENTITY" ]; then
   if security find-identity -v -p codesigning 2>/dev/null |
-      grep -q '"panvox-dev"'; then
-    CODESIGN_IDENTITY="panvox-dev"
+      grep -q '"avoxkit-dev"'; then
+    CODESIGN_IDENTITY="avoxkit-dev"
   else
     CODESIGN_IDENTITY="-"
   fi

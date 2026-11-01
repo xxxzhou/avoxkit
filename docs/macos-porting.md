@@ -194,8 +194,8 @@ AVOX_CMAKE_ARGS="-DAVOX_ENABLE_WEBRTC=OFF -DAVOX_ENABLE_ZLMEDIAKIT=OFF" \
 
 - `--flavor=commercial`：LGPL 渠道。Apple 上 FFmpeg 软编兜底注入
   `h264_videotoolbox`/`hevc_videotoolbox`，不再带 x264/x265，和本仓 LGPL kit
-  匹配。panvox 与本仓共用同一个 avox 构建树（`avox/build/macos/avox`），
-  这里也顺便把 panvox 期望的 commercial flavor 恢复回来。
+  匹配。共享 avox 构建树（`avox/build/macos/avox`）可能被其他 flavor 构建
+  改过状态，这里也顺便把 commercial flavor 的配置恢复回来。
 - 脚本会自动构建 `build/macos/{fdk-aac,freetype,sherpa-onnx,sentencepiece,...}`
   再编 avox；RTC/ZLM 已由上面的开关关闭。
 - 插件默认全开（`plugins/options.cmake` 里 ONNX/OPENCV/CV/SHERPA 都是 ON）。
@@ -315,7 +315,7 @@ nm -gU "$APP/Contents/Frameworks/avoxkit_native.dylib" | grep -i AvoxManager
 ### 4.4 资源与插件目录
 
 - **包内资源有两条合法摆法：`Contents/Resources/avox.bundle/<子目录>/`
-  （整包，panvox 用）或 `Contents/Resources/<子目录>/`（扁平，只带需要的；
+  （整包摆法）或 `Contents/Resources/<子目录>/`（扁平，只带需要的；
   avoxkit 的 `glsl/` 走这条）。**
   `glsl/`、`fonts/`、`images/`、`models/`、`certs/` 全部由
   `src/avox_apple/IOSHelper.mm` 的 `getBundlePath` 解析，查找链只有
@@ -338,10 +338,10 @@ nm -gU "$APP/Contents/Frameworks/avoxkit_native.dylib" | grep -i AvoxManager
   `~/Library/Application Support/dev.avox.avoxkit/models`，shim 调
   `avox::setModelsRoot`，macOS 不需要改。首次使用下载 + sha256 校验。
 
-### 4.5 Apple 资源与引用加载（panvox 实证口径，2026-10-30）
+### 4.5 Apple 资源与引用加载（已上架产品实证口径，2026-10-30）
 
-panvox 的在售包是这条链的权威参考：`panvox/tools/deploy_macos_runtime.sh`
-（macOS）与 `panvox/tools/deploy_ios_runtime.sh`（iOS）。**照抄摆位，别自创目录名**——
+内部已上架产品的部署脚本是这条链的权威参考（`deploy_macos_runtime.sh` /
+`deploy_ios_runtime.sh`，在内部工具仓，不在本仓）。**照抄摆位，别自创目录名**——
 2026-10-30 录屏全绿就是这么来的：着色器摆在 `Resources/assets/glsl`，引擎一个
 都没加载上，`RGBA2YUV` 转换层被禁用，写出的视频轨每帧都是 0（YUV 0,0,0 在
 播放器里显示为深绿），而日志里只有 4 行 warn。
@@ -354,12 +354,12 @@ panvox 的在售包是这条链的权威参考：`panvox/tools/deploy_macos_runt
 | 资源目录里带脚本类文件 | 90035 逐文件点名（无 shebang、无执行位也判） | 入包前删 `.py/.mm/.m/.sh/.rb/.pl`（iOS 上是死重） |
 | 资源目录里有非 ASCII 文件名 | 90035 按字节漂移点名，本地验不出 | 同样入包前按字节删除 |
 | 构建相位里 `rm -rf` 大目录 | 本机批量删除保护（>50 文件）拦下子进程，`script_phase` 在编译完成之后整体失败 | 用 `ditto` 原地覆盖合并，不要删 |
-| 二进制/资源在 xcodebuild 之外补拷 | macOS 代码门禁拒绝加载（`dlopen` 报 ENOENT），事后重签也无效 | 拷入与签名放进 Podfile `script_phase`（panvox `app/macos/Podfile` 的 `Deploy Panvox Native Engine` 同款） |
+| 二进制/资源在 xcodebuild 之外补拷 | macOS 代码门禁拒绝加载（`dlopen` 报 ENOENT），事后重签也无效 | 拷入与签名放进 Podfile `script_phase`（内部上架产品 Podfile 的 `Deploy Native Engine` phase 同款） |
 | iOS 主执行文件被 strip | 全局符号连导出表一起削光，`DynamicLibrary.process()` 取符号全空（TestFlight 1.0.0(2) 实证） | 引擎+shim 链成 framework dylib；avoxkit 走 `avoxkit_native.dylib`，天然免疫 |
 | iOS `use_frameworks` 后资源进了框架 | `mainBundle` 找不到 `avox.bundle`，资源全哑 | 查找链已含 `Frameworks/<pod>.framework/avox.bundle/`，摆对即可 |
 | iOS 沙盒打不开系统字体 | 字幕整行 tofu（方框数 = 字符数） | 喂 `avox.bundle/fonts/` 的包内字体，别依赖系统 PingFang |
 | 插件目录摆错 | 插件全缺、`image_inpaint=0` | `dladdr` 定位到 shim ⇒ 插件放 `Contents/Frameworks/plugins/`（§4.4） |
-| 增量构建后仍链旧 ffmpeg | 部署静默链旧库（panvox 10/14 缺 `_ff_httpproxy_protocol` 实证） | 3rdparty 换批后跑一次默认全量构建，再 `nm` 复核符号 |
+| 增量构建后仍链旧 ffmpeg | 部署静默链旧库（10-14 实证缺 `_ff_httpproxy_protocol`） | 3rdparty 换批后跑一次默认全量构建，再 `nm` 复核符号 |
 
 上 App Store 的资源目录只留数据文件：脚本类文件与非 ASCII 文件名入包前剥掉
 （avoxkit 的 `agent/skills` 在 iOS 上是死重），模型不随包、改 App 内下载。
@@ -477,7 +477,7 @@ otool -L "$APP/Contents/Frameworks/plugins/libavox_onnx.dylib"
 
 ### 6.3 签名与公证
 
-**本地测试默认用固定自签证书 `panvox-dev`**（`script/build_macos.sh` 检测到就
+**本地测试默认用固定自签证书 `avoxkit-dev`**（`script/build_macos.sh` 检测到就
 自动选用）：ad-hoc 签名的 designated requirement 是 cdhash，每次重建都变，
 屏幕录制/麦克风的 TCC 授权随之失效——反复重建后 System Settings 里开关仍
 显示打开，采集却报 `-3801/userDeclined`。自签证书的 requirement 是
@@ -604,7 +604,7 @@ cd native/avtool/build/bin/Release
 | 模型下载失败 | 沙盒缺 `network.client` | 补 entitlement |
 | 退出偶发崩溃 | 没调 `ak_shutdown` | AppDelegate 终止钩子 |
 | `flutter build macos` 缺 Podfile/Pods | Windows 上生成的脚手架不完整 | `flutter pub get` 会生成；必要时 `flutter create --platforms=macos .` |
-| 录屏报 `-3801/userDeclined`，系统设置开关却是开的 | ad-hoc 签名 cdhash 每次重建都变，旧 TCC 授权对不上 | 用固定自签证书签（默认 `panvox-dev`）；`tccutil reset ScreenCapture dev.avox.avoxkit` 后重新授权 |
+| 录屏报 `-3801/userDeclined`，系统设置开关却是开的 | ad-hoc 签名 cdhash 每次重建都变，旧 TCC 授权对不上 | 用固定自签证书签（默认 `avoxkit-dev`）；`tccutil reset ScreenCapture dev.avox.avoxkit` 后重新授权 |
 | 长录音 `mic.wav` 只有最后 5 秒 | avox `WavSave::patchHeader` 回填头后写指针停在 44，覆盖已写数据 | 已修（avox `b8105dd`），回填后 seek 回数据末尾 |
 | 导出报 `cannot finalize output: Cross-device link` | 保存位置与工程目录跨卷（外置盘/iCloud），`rename` 返回 EXDEV | 已修：`replace_file` 退化为 copy + remove |
 | 点「打开所在文件夹」没反应 | `_reveal` 只处理了 Windows | 已修：macOS 走 `open -R` |
@@ -628,9 +628,9 @@ cd native/avtool/build/bin/Release
    macOS 显示器/麦克风枚举、WAV 周期回填覆盖修复（avox `b8105dd`）；
    实测 43.8s 录屏 `mic.wav` 全长度、`capture.mkv` 带 AAC 音轨。
    ⚠️ 该次验收只核了音轨与时长，**没核画面像素**——视频轨实际全 0，见 §9.3。
-9. 工程导出跨卷修复（`EXDEV` → copy+remove），导出到 `/Volumes/PSSD`
+9. 工程导出跨卷修复（`EXDEV` → copy+remove），导出到外置盘（跨卷）
    实测 H.264+AAC；「打开所在文件夹」补 macOS `open -R`。
-10. 本地/内测包默认用固定自签证书 `panvox-dev`，TCC 授权跨重建有效。
+10. 本地/内测包默认用固定自签证书 `avoxkit-dev`，TCC 授权跨重建有效。
 
 ### 9.2 发布前仍需
 
