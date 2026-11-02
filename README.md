@@ -7,9 +7,9 @@
 [![License](https://img.shields.io/badge/License-AGPL--3.0-orange)](LICENSE)
 [![Privacy](https://img.shields.io/badge/Privacy-local--only-success)](PRIVACY.md)
 
-![Avoxkit video trimmer showing a movie frame preview, audio waveform and keyframe timeline](docs/screenshots/ak-clip.webp)
+![Avoxkit video trimmer with a Sintel movie frame, audio waveform and keyframe timeline](docs/screenshots/en/avoxkit-video-trimmer-windows-en.png)
 
-*Avoxkit 0.1.0 Trim page on Windows: a frame reference above the thumbnail, waveform and keyframe timeline. Drag the handles or type a time; the preview follows as you move.*
+*Avoxkit Trim page in English: the Sintel frame reference, audio waveform and keyframe timeline. Drag the handles or type a time; the preview follows as you move.*
 
 *Preview frame: Sintel (© Blender Foundation, CC BY 3.0).*
 
@@ -44,9 +44,9 @@ Change the container, video codec, resolution or audio codec. If only the contai
 - Hardware encoding is optional when a usable encoder is detected; software encoding is the default.
 - Remuxing still reads and writes the whole file, so it is not instant on slow or network drives.
 
-![Avoxkit free video converter on Windows with MP4, MKV and MOV container options, H.264/H.265 codecs and 1080p output](docs/screenshots/avoxkit-video-converter-windows.png)
+![Avoxkit free video converter on Windows with Sintel loaded, H.264 to H.265 settings, target size and quality](docs/screenshots/en/avoxkit-video-converter-windows-en.png)
 
-*Avoxkit's converter handles both format conversion and container remuxing. The page shows what will happen before the task is submitted.*
+*The converter shows source metadata, the remux or re-encode decision and the output path before the task is submitted.*
 
 ### Screen recorder: display or fixed region, 30 or 60 fps
 
@@ -57,7 +57,7 @@ Record a display, or a fixed region starting at the display's top-left corner, a
 - Landscape output is 1920×1080, portrait 1080×1920 and square 1080×1080; the app window is excluded from the recording.
 - No camera picture-in-picture, and the export framing is fixed: no zoom, crop, segments or custom background in 0.1.0.
 
-![Avoxkit screen recorder recording a 2560x1440 display at 60 fps with microphone and system audio on Windows](docs/screenshots/avoxkit-screen-recorder-windows.png)
+![Avoxkit screen recorder settings in English recording a 2560x1440 display at 60 fps with microphone and system audio](docs/screenshots/en/avoxkit-screen-recorder-windows-en.png)
 
 *Record a display or a fixed region at 30 or 60 fps, with microphone and system audio (system audio is Windows-only).*
 
@@ -78,7 +78,7 @@ Pull the first audio track out of a video, one file or a whole folder. Choose M4
 - Output goes next to the source by default; folder mode can keep the subdirectory structure or flatten it.
 - In folder batches, existing outputs are skipped by default.
 
-![Avoxkit extract audio from video page with M4A and MP3 output, bitrate options and folder batch](docs/screenshots/avoxkit-extract-audio-windows.png)
+![Avoxkit extract audio page in English with M4A, MP3 and original track output, bitrate options and folder batch](docs/screenshots/en/avoxkit-extract-audio-windows-en.png)
 
 *Extract the first audio track as M4A or MP3 at 128–320 kbps, or export the original track without re-encoding; if the target container rejects its codec, Avoxkit re-encodes automatically.*
 
@@ -91,9 +91,9 @@ If a video has an embedded text subtitle track, Avoxkit exports it as SRT; if it
 - Speech recognition runs on SenseVoice with Silero VAD and supports Chinese, English, Japanese, Korean and Cantonese.
 - Models are not bundled: the first run downloads about 230 MB with SHA-256 verification, then recognition works offline.
 
-![Avoxkit subtitle extractor with on-device SenseVoice speech recognition for Chinese, English, Japanese, Korean and Cantonese](docs/screenshots/avoxkit-subtitle-extractor-windows.png)
+![Avoxkit subtitle extractor in English with an embedded SRT track and on-device SenseVoice speech recognition](docs/screenshots/en/avoxkit-subtitle-extractor-windows-en.png)
 
-*When a file has no embedded text subtitles, Avoxkit generates an SRT with on-device SenseVoice recognition. The model is downloaded once and then runs offline.*
+*Sintel's embedded SRT track is exported directly; when there is no text track, on-device SenseVoice recognition generates one.*
 
 ### Remove a watermark from an image: auto-detect or brush
 
@@ -122,9 +122,9 @@ Convert, trim, extract audio, extract subtitles and image repair share one queue
 - Outputs are written to a temporary file first; failed or cancelled jobs clean it up. Batch conversions, audio and subtitle exports skip existing outputs.
 - Folder scans are capped at 5,000 files. History is stored locally; jobs interrupted by an exit are marked and can be requeued manually, not resumed automatically.
 
-<img src="docs/screenshots/avoxkit-batch-task-queue-windows.png" alt="Avoxkit task queue showing a completed video conversion job and its output path" width="620">
+<img src="docs/screenshots/en/avoxkit-batch-task-queue-windows-en.png" alt="Avoxkit task queue in English showing a completed subtitle extraction from Sintel" width="620">
 
-*One queue for single files and batch groups, with progress, cancellation and retry. This view shows a completed conversion.*
+*One queue for single files and batch groups, with progress, cancellation and retry. This view shows a completed subtitle extraction.*
 
 ## Privacy: files never leave your computer
 
@@ -151,7 +151,7 @@ Read the full [privacy policy](PRIVACY.md).
 | Item | Details |
 |---|---|
 | Version | 0.1.0, released 2026-10-31 |
-| Interface | Chinese (0.1.0); the screenshots show the shipped UI |
+| Interface | 15 languages in the current source: English, Simplified/Traditional Chinese, Japanese, Korean, French, German, Spanish, Italian, Portuguese, Brazilian Portuguese, Russian, Indonesian, Thai, Vietnamese. The v0.1.0 release still uses the Chinese UI. |
 | Windows | Windows x64 desktop |
 | Windows download | [Avoxkit-0.1.0-windows-x64.zip](https://github.com/xxxzhou/avoxkit/releases/download/v0.1.0/Avoxkit-0.1.0-windows-x64.zip) · [SHA-256](https://github.com/xxxzhou/avoxkit/releases/download/v0.1.0/Avoxkit-0.1.0-windows-x64.zip.sha256) |
 | macOS | macOS arm64 (Apple Silicon); Developer ID signed and notarized |

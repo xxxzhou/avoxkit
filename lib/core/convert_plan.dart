@@ -329,8 +329,8 @@ ConversionPlan buildConversionPlan({
     if (source.hasVideo &&
         (outputVideo == 'hevc' || outputVideo == 'av1')) {
       warnings.add(
-        'Windows 自带播放器可能打不开 ${prettyCodec(outputVideo ?? '')}；'
-        '请用支持该编码的播放器，或把视频改成 H.264',
+        I18n.trAuto('Windows 自带播放器可能打不开 ${prettyCodec(outputVideo ?? '')}；'
+            '请用支持该编码的播放器，或把视频改成 H.264'),
       );
     }
     if (audioMode == 'copy' &&
@@ -338,9 +338,9 @@ ConversionPlan buildConversionPlan({
             source.audioCodec == 'ac3' ||
             source.audioCodec == 'alac')) {
       warnings.add(
-        'Windows 自带播放器可能不支持 MP4 内的 '
-        '${prettyCodec(source.audioCodec ?? '')}；'
-        '打不开请把音频改成 AAC 或改用 MKV',
+        I18n.trAuto('Windows 自带播放器可能不支持 MP4 内的 '
+            '${prettyCodec(source.audioCodec ?? '')}；'
+            '打不开请把音频改成 AAC 或改用 MKV'),
       );
     }
   }

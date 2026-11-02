@@ -671,11 +671,12 @@ class _ClipPageState extends State<ClipPage> {
     final wave = index.hasWave ? I18n.tr('音频包络') : I18n.tr('无音频包络');
     final keys = index.keyframesMs.isEmpty
         ? I18n.tr('未读到关键帧')
-        : '${index.keyframesMs.length} 个关键帧';
+        : I18n.tr('${index.keyframesMs.length} 个关键帧');
     final strip = _source?.strip?.frames.isNotEmpty ?? false
         ? I18n.tr('缩略图条按整片均匀采样 · ')
         : '';
-    return '$strip$wave · $keys · 滚轮缩放，拖空白处平移，双击回到全片';
+    final zoom = I18n.tr('滚轮缩放，拖空白处平移，双击回到全片');
+    return '$strip$wave · $keys · $zoom';
   }
 
   Widget _buildOptionsPanel(ClipPlan plan) {

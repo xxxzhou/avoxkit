@@ -158,7 +158,7 @@ SubtitlePlan buildSubtitlePlan({
     return SubtitlePlan(
       source: SubtitlePlanSource.embedded,
       streamIndex: selected.index,
-      reason: '直接导出内嵌 ${prettySubtitleCodec(selected.codec)} 字幕轨',
+      reason: I18n.trAuto('直接导出内嵌 ${prettySubtitleCodec(selected.codec)} 字幕轨'),
       allowAsr: allowAsr,
       track: selected,
     );
@@ -169,8 +169,8 @@ SubtitlePlan buildSubtitlePlan({
     return SubtitlePlan(
       source: SubtitlePlanSource.embedded,
       streamIndex: best.index,
-      reason: '直接导出内嵌 ${prettySubtitleCodec(best.codec)} 字幕轨'
-          '${_languageSuffix(best.language)}',
+      reason: I18n.trAuto('直接导出内嵌 ${prettySubtitleCodec(best.codec)} 字幕轨'
+          '${_languageSuffix(best.language)}'),
       allowAsr: allowAsr,
       track: best,
     );

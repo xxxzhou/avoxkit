@@ -58,24 +58,26 @@ int? parseTimestamp(String text) {
 /// 片段时长的人话: 6.0 秒 / 1 分 05 秒 / 1 小时 02 分
 String prettyClipDuration(int ms) {
   if (ms < 1000) {
-    return '$ms 毫秒';
+    return I18n.tr('$ms 毫秒');
   }
   if (ms < 60000) {
     final seconds = ms / 1000;
-    return '${seconds.toStringAsFixed(seconds >= 10 ? 0 : 1)} 秒';
+    return I18n.tr(
+      '${seconds.toStringAsFixed(seconds >= 10 ? 0 : 1)} 秒',
+    );
   }
   final minutes = ms ~/ 60000;
   final seconds = (ms % 60000) ~/ 1000;
   if (minutes < 60) {
     return seconds == 0
-        ? '$minutes 分'
-        : '$minutes 分 ${seconds.toString().padLeft(2, '0')} 秒';
+        ? I18n.tr('$minutes 分')
+        : I18n.tr('$minutes 分 ${seconds.toString().padLeft(2, '0')} 秒');
   }
   final hours = minutes ~/ 60;
   final rest = minutes % 60;
   return rest == 0
-      ? '$hours 小时'
-      : '$hours 小时 ${rest.toString().padLeft(2, '0')} 分';
+      ? I18n.tr('$hours 小时')
+      : I18n.tr('$hours 小时 ${rest.toString().padLeft(2, '0')} 分');
 }
 
 /// 起点吸附到目标前最近关键帧; 没有关键帧时原样返回。

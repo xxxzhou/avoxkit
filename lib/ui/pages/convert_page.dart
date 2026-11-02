@@ -570,9 +570,9 @@ class _ConvertPageState extends State<ConvertPage>
                     return Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Expanded(flex: 3, child: left),
+                        Expanded(child: left),
                         const SizedBox(width: 24),
-                        Expanded(flex: 2, child: right),
+                        Expanded(child: right),
                       ],
                     );
                   }

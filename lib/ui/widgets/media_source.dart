@@ -101,27 +101,26 @@ class _AkSourcePickerState extends State<AkSourcePicker> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          Wrap(
+            spacing: 10,
+            runSpacing: 8,
             children: [
               FilledButton.icon(
                 onPressed: widget.onFile,
                 icon: const Icon(Icons.insert_drive_file_outlined, size: 18),
                 label: const T('打开文件'),
               ),
-              const SizedBox(width: 10),
               OutlinedButton.icon(
                 onPressed: widget.onFolder,
                 icon: const Icon(Icons.folder_open_outlined, size: 18),
                 label: const T('打开文件夹'),
               ),
-              if (widget.onSample != null) ...[
-                const SizedBox(width: 10),
+              if (widget.onSample != null)
                 TextButton.icon(
                   onPressed: widget.onSample,
                   icon: const Icon(Icons.auto_awesome_outlined, size: 17),
                   label: const T('试用示例'),
                 ),
-              ],
             ],
           ),
           if (widget.hint != null) ...[
