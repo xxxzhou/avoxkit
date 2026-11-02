@@ -9,8 +9,8 @@ import 'package:path_provider/path_provider.dart';
 /// 以中文原文为 key 的轻量 i18n：不抽 key、不跑 gen_l10n。
 ///
 /// 中文是源语言，`tr('转换')` 在中文下原样返回；其它语言从
-/// `assets/i18n/<code>.json` 读「中文原文 -> 译文」。译文缺失时回退中文，
-/// 不会出现空白界面。测试默认中文，因此现有中文断言不受影响。
+/// `assets/i18n/<code>.json` 读「中文原文 -> 译文」。译文缺失时先用英文，
+/// 再回退中文，不会出现空白界面。测试默认中文，因此现有中文断言不受影响。
 class I18n {
   static const Locale zh = Locale('zh');
   static const Locale zhHant =
@@ -145,8 +145,21 @@ class I18n {
 
   /// 动态文案：先精确匹配；匹配不到把数字归一成 `{n}` 再查模板，
   /// 这样「任务 #123」「3 个关键帧」不用每个都改模板。
+  /// 当前语言缺译文时先用英文兜底，避免新增文案在非中文界面回落成中文。
   static String trAuto(String text) {
-    final map = _maps[fileNameOf(locale.value)];
+    if (isChinese(locale.value)) {
+      return text;
+    }
+    final name = fileNameOf(locale.value);
+    final translated = _trIn(name, text);
+    if (translated != text || name == 'en') {
+      return translated;
+    }
+    return _trIn('en', text);
+  }
+
+  static String _trIn(String name, String text) {
+    final map = _maps[name];
     if (map == null) {
       return text;
     }
@@ -168,7 +181,7 @@ class I18n {
       }
     }
     // 非数字占位（编码器/容器/文件名等）：`{x}` 非贪婪捕获，`{n}` 捕数字
-    for (final p in _xPatterns[fileNameOf(locale.value)] ?? const []) {
+    for (final p in _xPatterns[name] ?? const []) {
       final m = p.re.firstMatch(text);
       if (m == null) {
         continue;

@@ -11,6 +11,7 @@ class ConvertSettings {
     this.audioBitrateKbps = -1,
     this.quality = 60,
     this.hardware = false,
+    this.targetSizeMb,
   });
 
   /// source | mp4 | mkv | mov
@@ -28,11 +29,30 @@ class ConvertSettings {
   final int quality;
   final bool hardware;
 
+  /// 目标体积 MB; 非空时逐文件按目标算码率, 强制重编视频
+  final int? targetSizeMb;
+
   bool get isIdentity =>
       container == 'source' &&
       video == 'source' &&
       height == null &&
       audio == 'source';
+
+  factory ConvertSettings.fromJson(Map<String, dynamic> json) =>
+      ConvertSettings(
+        container:
+            json['container'] is String ? json['container'] as String : 'source',
+        video: json['video'] is String ? json['video'] as String : 'source',
+        height: json['height'] is int ? json['height'] as int : null,
+        audio: json['audio'] is String ? json['audio'] as String : 'source',
+        audioBitrateKbps: json['audio_bitrate_kbps'] is int
+            ? json['audio_bitrate_kbps'] as int
+            : -1,
+        quality: json['quality'] is int ? json['quality'] as int : 60,
+        hardware: json['hardware'] is bool ? json['hardware'] as bool : false,
+        targetSizeMb:
+            json['target_size_mb'] is int ? json['target_size_mb'] as int : null,
+      );
 
   Map<String, dynamic> toJson() => {
         'container': container,
@@ -42,6 +62,7 @@ class ConvertSettings {
         'audio_bitrate_kbps': audioBitrateKbps,
         'quality': quality,
         'hardware': hardware,
+        if (targetSizeMb != null) 'target_size_mb': targetSizeMb,
       };
 }
 
@@ -55,6 +76,7 @@ class SourceMedia {
     required this.audioCodec,
     required this.hasVideo,
     required this.hasAudio,
+    this.durationMs = 0,
   });
 
   factory SourceMedia.fromProbe(String path, Map<String, dynamic> probe) {
@@ -68,6 +90,7 @@ class SourceMedia {
       audioCodec: audio?['codec']?.toString().toLowerCase(),
       hasVideo: video != null,
       hasAudio: audio != null,
+      durationMs: (probe['duration_ms'] as num?)?.toInt() ?? 0,
     );
   }
 
@@ -78,6 +101,9 @@ class SourceMedia {
   final String? audioCodec;
   final bool hasVideo;
   final bool hasAudio;
+
+  /// 时长毫秒; 目标体积算码率用, 读不到为 0
+  final int durationMs;
 
   static Map<String, dynamic>? _firstTrack(dynamic value) {
     if (value is List && value.isNotEmpty && value.first is Map) {
@@ -120,6 +146,21 @@ class ConversionPlan {
   bool get canSubmit => kind != null && error == null && !noop;
 }
 
+/// 目标体积→视频码率(kbps): 预留 2% 封装开销, 扣除音频后按时长均摊。
+/// 算不出正数返回 0, 由调用方报错。
+int videoBitrateForTarget({
+  required int targetSizeMb,
+  required int durationMs,
+  required int audioKbps,
+}) {
+  if (targetSizeMb <= 0 || durationMs <= 0) {
+    return 0;
+  }
+  final totalKbits = targetSizeMb * 8 * 1024 * 1024 / 1000;
+  final budget = totalKbits * 0.98 / (durationMs / 1000) - audioKbps;
+  return budget.floor();
+}
+
 /// 单文件判定: 目标容器 + 目标编码/分辨率 vs 源流, 决定封装还是重编。
 ConversionPlan buildConversionPlan({
   required SourceMedia source,
@@ -132,6 +173,26 @@ ConversionPlan buildConversionPlan({
   final targetContainer =
       settings.container == 'source' ? source.container : settings.container;
   final warnings = <String>[];
+
+  // 目标体积: 强制重编视频, 音频按确定码率重编, 逐文件算预算
+  final targetMb = settings.targetSizeMb;
+  final targetAudioKbps = targetMb == null
+      ? 0
+      : (settings.audioBitrateKbps > 0 ? settings.audioBitrateKbps : 128);
+  if (targetMb != null && !source.hasVideo) {
+    return ConversionPlan(
+      reason: I18n.tr('目标体积压缩需要视频轨'),
+      detail: '',
+      error: I18n.tr('目标体积压缩需要视频轨；纯音频请使用「提取音频」'),
+    );
+  }
+  if (targetMb != null && source.durationMs <= 0) {
+    return ConversionPlan(
+      reason: I18n.tr('无法读取源文件时长'),
+      detail: '',
+      error: I18n.tr('无法读取源文件时长，不能按目标体积计算码率'),
+    );
+  }
 
   String? videoMode; // copy | encode
   String? audioMode; // copy | encode
@@ -159,7 +220,8 @@ ConversionPlan buildConversionPlan({
         : (settings.video == 'h265' ? 'hevc' : 'h264');
     final sameCodec = requested == srcCodec;
     final stores = containerStoresVideo(targetContainer, srcCodec);
-    final copy = sameCodec && sameSize && stores;
+    // 目标体积必须重编视频才能控码率
+    final copy = sameCodec && sameSize && stores && targetMb == null;
 
     if (copy) {
       videoMode = 'copy';
@@ -199,7 +261,8 @@ ConversionPlan buildConversionPlan({
     final requested = settings.audio == 'source' ? srcCodec : settings.audio;
     final sameCodec = requested == srcCodec;
     final stores = containerStoresAudio(targetContainer, srcCodec);
-    if (sameCodec && stores) {
+    // 音频直拷会让体积预算不可算; 目标体积下一律按确定码率重编
+    if (sameCodec && stores && targetAudioKbps == 0) {
       audioMode = 'copy';
     } else {
       audioMode = 'encode';
@@ -217,7 +280,12 @@ ConversionPlan buildConversionPlan({
           error: I18n.tr('本机没有可用的 AAC / MP3 编码器'),
         );
       }
-      if (settings.audio == 'source' && !stores) {
+      if (targetAudioKbps > 0 && sameCodec && stores) {
+        warnings.add(
+          I18n.trAuto('目标体积模式下音频转码为 '
+              '${prettyCodec(encodeAudio)} $targetAudioKbps kbps'),
+        );
+      } else if (settings.audio == 'source' && !stores) {
         warnings.insert(
           0,
           '${prettyContainer(targetContainer)} 不支持 '
@@ -232,6 +300,26 @@ ConversionPlan buildConversionPlan({
               '${prettyCodec(encodeAudio)}，请换容器或换编码',
         );
       }
+    }
+  }
+
+  int? targetVideoKbps;
+  if (targetMb != null) {
+    final kbps = videoBitrateForTarget(
+      targetSizeMb: targetMb,
+      durationMs: source.durationMs,
+      audioKbps: audioMode == 'encode' ? targetAudioKbps : 0,
+    );
+    if (kbps < 100) {
+      return ConversionPlan(
+        reason: I18n.tr('目标体积太小'),
+        detail: '',
+        error: I18n.trAuto('目标体积太小：视频码率预算只剩 $kbps kbps，请调大目标体积'),
+      );
+    }
+    targetVideoKbps = kbps;
+    if (kbps < 500) {
+      warnings.add(I18n.tr('目标体积很紧，画质会明显受损'));
     }
   }
 
@@ -318,14 +406,24 @@ ConversionPlan buildConversionPlan({
       'width': ?outWidth,
       'height': ?outHeight,
       'hardware': settings.hardware ? 'auto' : 'off',
-      'rate_mode': 'quality',
-      'quality': settings.quality,
+      if (targetVideoKbps != null) ...{
+        'rate_mode': 'vbr',
+        'bitrate_kbps': targetVideoKbps,
+      } else ...{
+        'rate_mode': 'quality',
+        'quality': settings.quality,
+      },
     };
     params['audio'] = <String, dynamic>{
       // copy 时同样只是回退目标: 正常情况下音频包直拷
       'codec': audioCopy ? 'aac' : (encodeAudio ?? (audioMode == null ? 'none' : 'aac')),
-      'bitrate_kbps': settings.audioBitrateKbps,
+      'bitrate_kbps': targetVideoKbps != null
+          ? targetAudioKbps
+          : settings.audioBitrateKbps,
     };
+    if (targetMb != null) {
+      params['target_size_bytes'] = targetMb * 1024 * 1024;
+    }
   }
 
   final reason = switch ((videoMode, audioMode)) {

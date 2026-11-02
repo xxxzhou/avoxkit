@@ -179,18 +179,24 @@ class _RepairPageState extends State<RepairPage> {
 
   Future<void> _pickInput() async {
     final file = await openFile(acceptedTypeGroups: [_imageTypes]);
-    if (file == null) {
-      return;
+    if (file != null) {
+      await _acceptFile(file.path);
     }
+  }
+
+  Future<void> _acceptFile(String path) async {
     _folder.clear();
-    await _selectImage(file.path);
+    await _selectImage(path);
   }
 
   Future<void> _pickFolder() async {
     final path = await getDirectoryPath();
-    if (path == null) {
-      return;
+    if (path != null) {
+      await _acceptFolder(path);
     }
+  }
+
+  Future<void> _acceptFolder(String path) async {
     setState(() {
       _inputPath = null;
       _outputPath = null;
@@ -476,19 +482,24 @@ class _RepairPageState extends State<RepairPage> {
       );
       var submitted = 0;
       var rejected = 0;
-      for (final item in plan.pending) {
-        try {
-          widget.taskStore.submitResolved(
-            kind: 'image',
-            input: item.entry.path,
-            output: item.output,
-            params: params,
-            groupId: group.id,
-          );
-          submitted++;
-        } catch (_) {
-          rejected++;
+      widget.taskStore.beginBatch();
+      try {
+        for (final item in plan.pending) {
+          try {
+            widget.taskStore.submitResolved(
+              kind: 'image',
+              input: item.entry.path,
+              output: item.output,
+              params: params,
+              groupId: group.id,
+            );
+            submitted++;
+          } catch (_) {
+            rejected++;
+          }
         }
+      } finally {
+        widget.taskStore.endBatch();
       }
       if (!mounted) {
         return;
@@ -707,6 +718,9 @@ class _RepairPageState extends State<RepairPage> {
             AkSourcePicker(
               onFile: _pickInput,
               onFolder: _pickFolder,
+              onDroppedFile: _acceptFile,
+              onDroppedFolder: _acceptFolder,
+              extensions: const ['jpg', 'jpeg', 'png', 'bmp', 'webp', 'tga'],
               hint: I18n.tr('JPG / PNG / BMP / WebP，也可以整个文件夹批量处理'),
             )
           else

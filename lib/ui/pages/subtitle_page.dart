@@ -125,10 +125,12 @@ class _SubtitlePageState extends State<SubtitlePage> {
 
   Future<void> _pickInput() async {
     final file = await openFile(acceptedTypeGroups: [_videoTypes]);
-    if (file == null) {
-      return;
+    if (file != null) {
+      await _acceptFile(file.path);
     }
-    final path = file.path;
+  }
+
+  Future<void> _acceptFile(String path) async {
     _folder.clear();
     setState(() {
       _inputPath = path;
@@ -162,9 +164,12 @@ class _SubtitlePageState extends State<SubtitlePage> {
 
   Future<void> _pickFolder() async {
     final path = await getDirectoryPath();
-    if (path == null) {
-      return;
+    if (path != null) {
+      await _acceptFolder(path);
     }
+  }
+
+  Future<void> _acceptFolder(String path) async {
     setState(() {
       _inputPath = null;
       _outputPath = null;
@@ -365,28 +370,33 @@ class _SubtitlePageState extends State<SubtitlePage> {
       var embedded = 0;
       var speech = 0;
       var rejected = 0;
-      for (final entry in ready.entries) {
-        final itemPlan = entry.value;
-        if (!itemPlan.canSubmit) {
-          continue;
-        }
-        try {
-          widget.taskStore.submitResolved(
-            kind: 'subtitle',
-            input: entry.key.entry.path,
-            output: entry.key.output,
-            params: itemPlan.params(),
-            groupId: group.id,
-          );
-          submitted++;
-          if (itemPlan.source == SubtitlePlanSource.embedded) {
-            embedded++;
-          } else {
-            speech++;
+      widget.taskStore.beginBatch();
+      try {
+        for (final entry in ready.entries) {
+          final itemPlan = entry.value;
+          if (!itemPlan.canSubmit) {
+            continue;
           }
-        } catch (_) {
-          rejected++;
+          try {
+            widget.taskStore.submitResolved(
+              kind: 'subtitle',
+              input: entry.key.entry.path,
+              output: entry.key.output,
+              params: itemPlan.params(),
+              groupId: group.id,
+            );
+            submitted++;
+            if (itemPlan.source == SubtitlePlanSource.embedded) {
+              embedded++;
+            } else {
+              speech++;
+            }
+          } catch (_) {
+            rejected++;
+          }
         }
+      } finally {
+        widget.taskStore.endBatch();
       }
       if (!mounted) {
         return;
@@ -498,6 +508,8 @@ class _SubtitlePageState extends State<SubtitlePage> {
             AkSourcePicker(
               onFile: _pickInput,
               onFolder: _pickFolder,
+              onDroppedFile: _acceptFile,
+              onDroppedFolder: _acceptFolder,
               hint: I18n.tr('内嵌字幕直接导出；没有字幕时语音识别'),
             )
           else

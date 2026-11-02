@@ -45,10 +45,14 @@ class AkText {
   );
   static const mono = TextStyle(
     fontFamily: 'JetBrains Mono',
+    fontFamilyFallback: _cjkFallback,
     fontSize: 12,
     color: AkColors.muted,
   );
 }
+
+/// 中文统一走微软雅黑, 避免不同 Windows 版本回退字形不一致
+const _cjkFallback = ['Microsoft YaHei UI', 'Microsoft YaHei', 'Segoe UI'];
 
 ThemeData akTheme() {
   final base = ThemeData.dark(useMaterial3: true);
@@ -72,6 +76,7 @@ ThemeData akTheme() {
       bodyColor: AkColors.text,
       displayColor: AkColors.textStrong,
       fontFamily: 'Albert Sans',
+      fontFamilyFallback: _cjkFallback,
     ),
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/after_complete.dart';
 import '../../core/task.dart';
 import '../../core/task_store.dart';
 import '../tokens.dart';
@@ -30,9 +31,50 @@ class TasksPage extends StatelessWidget {
         children: [
           PageHeader(
             title: I18n.tr('任务'),
-            description: I18n.tr('批量组与单文件任务；失败项可以重试。'),
+            description: I18n.tr('批量组与单文件任务；失败项可以重试，中断项可以重新排队。'),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 16),
+          ListenableBuilder(
+            listenable: taskStore,
+            builder: (context, _) {
+              return Row(
+                children: [
+                  T('全部完成后', style: AkText.label),
+                  const SizedBox(width: 12),
+                  DropdownButton<AfterCompleteAction>(
+                    value: taskStore.afterComplete,
+                    isDense: true,
+                    underline: const SizedBox.shrink(),
+                    items: [
+                      for (final action in AfterCompleteAction.values)
+                        DropdownMenuItem(
+                          value: action,
+                          child: T(action.label, style: AkText.body),
+                        ),
+                    ],
+                    onChanged: (action) {
+                      if (action != null) {
+                        taskStore.setAfterComplete(action);
+                      }
+                    },
+                  ),
+                  const Spacer(),
+                  if (taskStore.shutdownNotice != null) ...[
+                    T(
+                      taskStore.shutdownNotice!,
+                      style: AkText.micro.copyWith(color: AkColors.danger),
+                    ),
+                    const SizedBox(width: 8),
+                    TextButton(
+                      onPressed: taskStore.cancelShutdown,
+                      child: const T('取消关机'),
+                    ),
+                  ],
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 8),
           Expanded(
             child: ListenableBuilder(
               listenable: taskStore,
@@ -44,11 +86,13 @@ class TasksPage extends StatelessWidget {
                 if (groups.isEmpty && loose.isEmpty) {
                   return const _EmptyTasks();
                 }
-                return ListView(
+                return ListView.builder(
                   padding: const EdgeInsets.only(bottom: 40),
-                  children: [
-                    for (final group in groups)
-                      Padding(
+                  itemCount: groups.length + loose.length,
+                  itemBuilder: (context, index) {
+                    if (index < groups.length) {
+                      final group = groups[index];
+                      return Padding(
                         padding: const EdgeInsets.only(bottom: 12),
                         child: AkGroupCard(
                           group: group,
@@ -57,17 +101,18 @@ class TasksPage extends StatelessWidget {
                           onOpenTask: (taskId) =>
                               _openTask(context, taskId),
                         ),
+                      );
+                    }
+                    final task = loose[index - groups.length];
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: _TaskCard(
+                        task: task,
+                        taskStore: taskStore,
+                        onOpenTask: () => _openTask(context, task.id),
                       ),
-                    for (final task in loose)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: _TaskCard(
-                          task: task,
-                          taskStore: taskStore,
-                          onOpenTask: () => _openTask(context, task.id),
-                        ),
-                      ),
-                  ],
+                    );
+                  },
                 );
               },
             ),
@@ -214,6 +259,17 @@ class _TaskCard extends StatelessWidget {
                 ],
               ),
             ],
+            if (task.state == 'interrupted') ...[
+              const SizedBox(height: 12),
+              T(
+                '上次退出时未完成，可按原设置重新排队。',
+                style: AkText.micro.copyWith(color: AkColors.muted),
+              ),
+              TextButton(
+                onPressed: () => taskStore.requeueTask(task.id),
+                child: const T('重新排队'),
+              ),
+            ],
             if (task.state == 'failed') ...[
               const SizedBox(height: 12),
               T(
@@ -244,7 +300,9 @@ class _TaskCard extends StatelessWidget {
   }
 
   static String _queueLabel(int ahead) {
-    return ahead > 0 ? '排队中 · 前面还有 $ahead 个任务' : I18n.tr('排队中 · 即将开始');
+    return ahead > 0
+        ? I18n.tr('排队中 · 前面还有 $ahead 个任务')
+        : I18n.tr('排队中 · 即将开始');
   }
 
   static Color _stateColor(String state) {
@@ -254,6 +312,8 @@ class _TaskCard extends StatelessWidget {
       case 'failed':
         return AkColors.danger;
       case 'cancelled':
+        return AkColors.faint;
+      case 'interrupted':
         return AkColors.faint;
       case 'running':
         return AkColors.accent;

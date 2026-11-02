@@ -83,18 +83,19 @@ class TaskDetailPage extends StatelessWidget {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Align(
-              alignment: Alignment.centerLeft,
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 720),
-                child: AkLivePreview(
-                  engine: taskStore.engine,
-                  taskId: task.id,
-                  active: task.isActive,
-                  placeholder: _placeholder(_hint(task, ahead)),
+            if (taskStore.fullEngine != null)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 720),
+                  child: AkLivePreview(
+                    engine: taskStore.fullEngine!,
+                    taskId: task.id,
+                    active: task.isActive,
+                    placeholder: _placeholder(_hint(task, ahead)),
+                  ),
                 ),
               ),
-            ),
             if (task.hasWave) ...[
               const SizedBox(height: 16),
               _wave(task),

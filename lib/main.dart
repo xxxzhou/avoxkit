@@ -1,3 +1,4 @@
+import 'dart:async' show unawaited;
 import 'dart:ui' show AppExitResponse;
 
 import 'package:flutter/material.dart';
@@ -7,6 +8,7 @@ import 'core/app_paths.dart';
 import 'core/compat_options.dart';
 import 'core/engine.dart';
 import 'core/i18n.dart';
+import 'core/presets.dart';
 import 'core/review_prompt.dart';
 import 'core/task_store.dart';
 import 'native/ak_bindings.dart';
@@ -19,6 +21,7 @@ Future<void> main() async {
   await I18n.load();
   await ReviewPrompt.load();
   await CompatOptions.load();
+  await PresetStore.instance.restore();
   late final Engine engine;
   try {
     engine = Engine(AkBindings.open());
@@ -97,6 +100,7 @@ class _AvoxkitAppState extends State<AvoxkitApp> {
     super.initState();
     if (widget.engine.ready) {
       _taskStore = TaskStore(widget.engine);
+      unawaited(_taskStore!.restore());
       _lifecycle = AppLifecycleListener(
         onExitRequested: () async {
           widget.engine.shutdown();

@@ -23,7 +23,16 @@ class EngineException implements Exception {
   String toString() => '$code: $message';
 }
 
-class Engine {
+/// TaskStore 依赖的最小引擎面; Engine 实现, 测试注入假实现
+abstract class TaskEngine {
+  Stream<AkEvent> get events;
+  int submit(Map<String, dynamic> task);
+  int cancel(int taskId);
+  Future<void> openLogFolder();
+  Future<void> openFolder(String path);
+}
+
+class Engine implements TaskEngine {
   Engine(this.bindings);
 
   final AkBindings bindings;
@@ -40,6 +49,7 @@ class Engine {
   String? errorMessage;
   String? errorDetail;
 
+  @override
   Stream<AkEvent> get events => _controller.stream;
 
   String get logDir {
@@ -50,6 +60,7 @@ class Engine {
     return workDir == null ? '' : p.join(workDir!, 'logs');
   }
 
+  @override
   Future<void> openLogFolder() async {
     final dir = logDir;
     if (dir.isEmpty) {
@@ -63,6 +74,7 @@ class Engine {
     await openFolder(dir);
   }
 
+  @override
   Future<void> openFolder(String path) async {
     if (path.isEmpty) {
       return;
@@ -176,6 +188,7 @@ class Engine {
     return result;
   }
 
+  @override
   int submit(Map<String, dynamic> task) {
     final id = bindings.submit(jsonEncode(task));
     if (id < 0) {
@@ -184,6 +197,7 @@ class Engine {
     return id;
   }
 
+  @override
   int cancel(int taskId) => bindings.cancel(taskId);
 
   // 原生窗口直显预览; 仅 Windows runner 交过主窗句柄后可用, 其余口失败静默

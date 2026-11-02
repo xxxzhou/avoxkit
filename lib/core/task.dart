@@ -48,13 +48,16 @@ class TaskItem {
   bool get hasWave => wavePeaks.isNotEmpty;
 
   bool get isTerminal =>
-      state == 'done' || state == 'failed' || state == 'cancelled';
+      state == 'done' ||
+      state == 'failed' ||
+      state == 'cancelled' ||
+      state == 'interrupted';
 
   bool get isActive => !isTerminal;
 
   String get title {
     if (input == null || input!.isEmpty) {
-      return '任务 #$id';
+      return I18n.tr('任务 #$id');
     }
     return p.basename(input!);
   }
@@ -71,6 +74,8 @@ class TaskItem {
         return I18n.tr('失败');
       case 'cancelled':
         return I18n.tr('已取消');
+      case 'interrupted':
+        return I18n.tr('已中断');
       default:
         return state;
     }
@@ -158,7 +163,7 @@ class TaskItem {
       return;
     }
     if (wavePeaks.isEmpty) {
-      // 截取任务的进度已经映射成I18n.tr("片段内相对时间"), 波形也从 0 起算
+      // 截取任务的进度已经映射成片段内相对时间, 波形也从 0 起算
       waveStartMs = kind == 'trim' ? 0 : (event.ptsMs ?? 0);
       waveBucketMs = event.bucketMs ?? 100;
     }

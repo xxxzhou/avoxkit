@@ -67,6 +67,11 @@ if ($running) {
   throw "avoxkit.exe is running; close it before packaging"
 }
 
+# AGPL 随包义务: 商店包与 portable dist 均携带许可与源码说明
+foreach ($doc in @("LICENSE", "THIRD_PARTY_NOTICES.md", "dist/release-assets/SOURCE-OFFER.md")) {
+  Copy-Item (Join-Path $root $doc) $src -Force
+}
+
 if ($Msix -or $Store) {
   if ($Msix -and $Store) { throw "-Msix 与 -Store 互斥: 侧载签名包与商店免签包分开出" }
   if ($Msix -and -not (Test-Path (Join-Path $root "build/avoxkit-store.pfx"))) {

@@ -8,12 +8,14 @@ import '../../core/batch.dart';
 import '../../core/batch_submit.dart';
 import '../../core/engine.dart';
 import '../../core/folder_source.dart';
+import '../../core/presets.dart';
 import '../../core/task_store.dart';
 import '../tokens.dart';
 import '../widgets/folder_card.dart';
 import '../widgets/group_card.dart';
 import '../widgets/media_source.dart';
 import '../widgets/panel.dart';
+import '../widgets/preset_bar.dart';
 import '../widgets/task_summary.dart';
 import '../widgets/task_visual.dart';
 import '../../core/i18n.dart';
@@ -41,7 +43,8 @@ class ExtractPage extends StatefulWidget {
   State<ExtractPage> createState() => _ExtractPageState();
 }
 
-class _ExtractPageState extends State<ExtractPage> {
+class _ExtractPageState extends State<ExtractPage>
+    implements ToolPresetHost {
   final FolderSource _folder = FolderSource(
     extensions: const ['mkv', 'mp4', 'mov', 'avi', 'ts', 'flv', 'webm', 'wmv', 'm4v'],
     skipStemSuffixes: const [],
@@ -106,7 +109,7 @@ class _ExtractPageState extends State<ExtractPage> {
     if (p.equals(path, input)) {
       path = p.join(dir, '$stem.extracted.$ext');
     }
-    // 同名文件已存在时自动加序号; 用户仍可在I18n.tr("输出文件")里改名
+    // 同名文件已存在时自动加序号; 用户仍可在输出文件里改名
     final outStem = p.basenameWithoutExtension(path);
     if (File(path).existsSync()) {
       for (var i = 1; i < 100; i++) {
@@ -121,10 +124,12 @@ class _ExtractPageState extends State<ExtractPage> {
 
   Future<void> _pickInput() async {
     final file = await openFile(acceptedTypeGroups: [_videoTypes]);
-    if (file == null) {
-      return;
+    if (file != null) {
+      await _acceptFile(file.path);
     }
-    final path = file.path;
+  }
+
+  Future<void> _acceptFile(String path) async {
     _folder.clear();
     setState(() {
       _inputPath = path;
@@ -160,9 +165,12 @@ class _ExtractPageState extends State<ExtractPage> {
 
   Future<void> _pickFolder() async {
     final path = await getDirectoryPath();
-    if (path == null) {
-      return;
+    if (path != null) {
+      await _acceptFolder(path);
     }
+  }
+
+  Future<void> _acceptFolder(String path) async {
     setState(() {
       _inputPath = null;
       _outputPath = null;
@@ -201,6 +209,36 @@ class _ExtractPageState extends State<ExtractPage> {
   void _selectFormat(String value) {
     setState(() {
       _format = value;
+      if (_outputAuto && _inputPath != null) {
+        _outputPath = _suggestedOutput(_inputPath!);
+      }
+    });
+  }
+
+  @override
+  String get presetToolId => 'extract';
+
+  @override
+  Map<String, dynamic> capturePresetValues() =>
+      {'format': _format, 'bitrate_kbps': _bitrate};
+
+  @override
+  void applyPresetValues(Map<String, dynamic> values) {
+    setState(() {
+      final format = values['format'];
+      final nextFormat = format is String &&
+              (format == 'm4a' ||
+                  format == 'mp3' ||
+                  (format == 'copy' && !_folder.hasFolder))
+          ? format
+          : null;
+      if (nextFormat != null) {
+        _format = nextFormat;
+      }
+      final bitrate = values['bitrate_kbps'];
+      if (bitrate is int) {
+        _bitrate = bitrate;
+      }
       if (_outputAuto && _inputPath != null) {
         _outputPath = _suggestedOutput(_inputPath!);
       }
@@ -278,18 +316,25 @@ class _ExtractPageState extends State<ExtractPage> {
         params: params,
         skipped: plan.skippedExisting,
       );
-      final failures = submitBatch(
-        store: widget.taskStore,
-        groupId: group.id,
-        plan: plan,
-        submitOne: (input, output, groupId) => widget.taskStore.submitExtract(
-          input: input,
-          output: output,
-          codec: _abiCodec,
-          bitrateKbps: _bitrate,
-          groupId: groupId,
-        ),
-      );
+      widget.taskStore.beginBatch();
+      late final int failures;
+      try {
+        failures = submitBatch(
+          store: widget.taskStore,
+          groupId: group.id,
+          plan: plan,
+          submitOne: (input, output, groupId) =>
+              widget.taskStore.submitExtract(
+            input: input,
+            output: output,
+            codec: _abiCodec,
+            bitrateKbps: _bitrate,
+            groupId: groupId,
+          ),
+        );
+      } finally {
+        widget.taskStore.endBatch();
+      }
       if (!mounted) {
         return;
       }
@@ -397,7 +442,12 @@ class _ExtractPageState extends State<ExtractPage> {
               ],
             )
           else if (_inputPath == null)
-            AkSourcePicker(onFile: _pickInput, onFolder: _pickFolder)
+            AkSourcePicker(
+              onFile: _pickInput,
+              onFolder: _pickFolder,
+              onDroppedFile: _acceptFile,
+              onDroppedFolder: _acceptFolder,
+            )
           else
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -496,7 +546,9 @@ class _ExtractPageState extends State<ExtractPage> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           T('输出设置', style: AkText.panelTitle),
-          const SizedBox(height: 20),
+          const SizedBox(height: 8),
+          AkPresetBar(host: this, store: PresetStore.instance),
+          const SizedBox(height: 16),
           T('音频格式', style: AkText.label),
           const SizedBox(height: 8),
           SegmentedButton<String>(

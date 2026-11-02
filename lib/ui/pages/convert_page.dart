@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 
 import '../../core/app_paths.dart';
@@ -11,10 +12,12 @@ import '../../core/engine.dart';
 import '../../core/folder_scan.dart';
 import '../../core/folder_source.dart';
 import '../../core/sample_media.dart';
+import '../../core/presets.dart';
 import '../../core/task_store.dart';
 import '../tokens.dart';
 import '../widgets/folder_card.dart';
 import '../widgets/group_card.dart';
+import '../widgets/preset_bar.dart';
 import '../widgets/task_visual.dart';
 import '../widgets/media_source.dart';
 import '../widgets/panel.dart';
@@ -47,7 +50,8 @@ class ConvertPage extends StatefulWidget {
   State<ConvertPage> createState() => _ConvertPageState();
 }
 
-class _ConvertPageState extends State<ConvertPage> {
+class _ConvertPageState extends State<ConvertPage>
+    implements ToolPresetHost {
   final FolderSource _folder = FolderSource(
     extensions: const [
       'mkv', 'mp4', 'mov', 'avi', 'ts', 'flv', 'webm', 'wmv', 'm4v', //
@@ -71,6 +75,8 @@ class _ConvertPageState extends State<ConvertPage> {
   int _audioBitrate = -1;
   double _quality = 60;
   bool _hardware = false;
+  int? _targetMb;
+  final TextEditingController _targetController = TextEditingController();
 
   int? _lastTaskId;
   int? _lastGroupId;
@@ -105,6 +111,7 @@ class _ConvertPageState extends State<ConvertPage> {
   @override
   void dispose() {
     _folder.dispose();
+    _targetController.dispose();
     super.dispose();
   }
 
@@ -116,6 +123,7 @@ class _ConvertPageState extends State<ConvertPage> {
         audioBitrateKbps: _audioBitrate,
         quality: _quality.round(),
         hardware: _hardware,
+        targetSizeMb: _targetMb,
       );
 
   SourceMedia? get _source {
@@ -168,13 +176,12 @@ class _ConvertPageState extends State<ConvertPage> {
 
   Future<void> _pickInput() async {
     final file = await openFile(acceptedTypeGroups: [_videoTypes]);
-    if (file == null) {
-      return;
+    if (file != null) {
+      await _acceptFile(file.path);
     }
-    await _useInput(file.path);
   }
 
-  Future<void> _useInput(String path) async {
+  Future<void> _acceptFile(String path) async {
     _folder.clear();
     setState(() {
       _inputPath = path;
@@ -212,13 +219,13 @@ class _ConvertPageState extends State<ConvertPage> {
       if (!mounted) {
         return;
       }
-      await _useInput(path);
+      await _acceptFile(path);
     } catch (error) {
       if (!mounted) {
         return;
       }
       setState(() {
-        _probeError = '示例加载失败: $error';
+        _probeError = I18n.tr('示例加载失败: $error');
         _probing = false;
       });
     }
@@ -226,9 +233,12 @@ class _ConvertPageState extends State<ConvertPage> {
 
   Future<void> _pickFolder() async {
     final path = await getDirectoryPath();
-    if (path == null) {
-      return;
+    if (path != null) {
+      await _acceptFolder(path);
     }
+  }
+
+  Future<void> _acceptFolder(String path) async {
     setState(() {
       _inputPath = null;
       _outputPath = null;
@@ -300,26 +310,27 @@ class _ConvertPageState extends State<ConvertPage> {
     });
   }
 
-  void _applyPreset(String preset) {
+  @override
+  String get presetToolId => 'convert';
+
+  @override
+  Map<String, dynamic> capturePresetValues() => _settings.toJson();
+
+  @override
+  void applyPresetValues(Map<String, dynamic> values) {
+    final settings = ConvertSettings.fromJson(values);
     setState(() {
-      switch (preset) {
-        case 'remux':
-          _container = 'mp4';
-          _video = 'source';
-          _height = null;
-          _audio = 'source';
-          _audioBitrate = -1;
-          _hardware = false;
-          break;
-        case 'h265':
-          _container = 'mp4';
-          _video = _h265Available ? 'h265' : 'h264';
-          _height = 1080;
-          _audio = 'source';
-          _audioBitrate = -1;
-          _quality = _quality < 50 ? 60 : _quality;
-          break;
-      }
+      _container = settings.container;
+      _video = settings.video == 'h265' && !_h265Available
+          ? 'h264'
+          : settings.video;
+      _height = settings.height;
+      _audio = settings.audio;
+      _audioBitrate = settings.audioBitrateKbps;
+      _quality = settings.quality.toDouble();
+      _hardware = settings.hardware && widget.engine.hardwareAvailable;
+      _targetMb = settings.targetSizeMb;
+      _targetController.text = settings.targetSizeMb?.toString() ?? '';
       _refreshOutput();
     });
   }
@@ -482,23 +493,28 @@ class _ConvertPageState extends State<ConvertPage> {
       var remux = 0;
       var transcode = 0;
       var rejected = 0;
-      for (final (item, conversion) in resolved) {
-        try {
-          widget.taskStore.submitResolved(
-            kind: conversion.kind!,
-            input: item.entry.path,
-            output: item.output,
-            params: conversion.params,
-            groupId: group.id,
-          );
-          if (conversion.kind == 'remux') {
-            remux++;
-          } else {
-            transcode++;
+      widget.taskStore.beginBatch();
+      try {
+        for (final (item, conversion) in resolved) {
+          try {
+            widget.taskStore.submitResolved(
+              kind: conversion.kind!,
+              input: item.entry.path,
+              output: item.output,
+              params: conversion.params,
+              groupId: group.id,
+            );
+            if (conversion.kind == 'remux') {
+              remux++;
+            } else {
+              transcode++;
+            }
+          } catch (_) {
+            rejected++;
           }
-        } catch (_) {
-          rejected++;
         }
+      } finally {
+        widget.taskStore.endBatch();
       }
 
       setState(() {
@@ -630,6 +646,8 @@ class _ConvertPageState extends State<ConvertPage> {
               onFile: _pickInput,
               onFolder: _pickFolder,
               onSample: _loadSample,
+              onDroppedFile: _acceptFile,
+              onDroppedFolder: _acceptFolder,
             )
           else
             Column(
@@ -725,14 +743,7 @@ class _ConvertPageState extends State<ConvertPage> {
             ],
           ),
           const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _presetButton(I18n.tr('仅换容器 MP4'), 'remux'),
-              _presetButton('H.265 · 1080p', 'h265'),
-            ],
-          ),
+          AkPresetBar(host: this, store: PresetStore.instance),
           const SizedBox(height: 20),
           T('容器', style: AkText.label),
           const SizedBox(height: 8),
@@ -838,6 +849,42 @@ class _ConvertPageState extends State<ConvertPage> {
             const SizedBox(height: 18),
             Row(
               children: [
+                T('目标体积', style: AkText.label),
+                const Spacer(),
+                if (_targetMb != null)
+                  TextButton(
+                    onPressed: () => setState(() {
+                      _targetMb = null;
+                      _targetController.clear();
+                    }),
+                    child: const T('恢复不限'),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _targetController,
+              keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              decoration: InputDecoration(
+                suffixText: 'MB',
+                hintText: I18n.tr('不限'),
+                isDense: true,
+                border: const OutlineInputBorder(),
+              ),
+              onChanged: (value) =>
+                  setState(() => _targetMb = int.tryParse(value)),
+            ),
+            const SizedBox(height: 8),
+            T(
+              _targetMb == null
+                  ? '填写后按目标体积逐文件自动计算码率，需要重新编码视频'
+                  : '已按目标体积计算码率；质量设置不生效，音频会按确定码率重编',
+              style: AkText.micro,
+            ),
+            const SizedBox(height: 18),
+            Row(
+              children: [
                 T('质量', style: AkText.label),
                 const Spacer(),
                 T(
@@ -851,7 +898,9 @@ class _ConvertPageState extends State<ConvertPage> {
               min: 0,
               max: 100,
               divisions: 20,
-              onChanged: (value) => setState(() => _quality = value),
+              onChanged: _targetMb == null
+                  ? (value) => setState(() => _quality = value)
+                  : null,
             ),
             T('数值越大越清晰、文件越大', style: AkText.micro),
             const SizedBox(height: 8),
@@ -1085,18 +1134,6 @@ class _ConvertPageState extends State<ConvertPage> {
         color: selected ? AkColors.accent : AkColors.border,
       ),
       onSelected: onTap == null ? null : (_) => onTap(),
-    );
-  }
-
-  Widget _presetButton(String label, String preset) {
-    return OutlinedButton(
-      onPressed: () => _applyPreset(preset),
-      style: OutlinedButton.styleFrom(
-        minimumSize: const Size(0, 32),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        textStyle: AkText.micro,
-      ),
-      child: T(label),
     );
   }
 }

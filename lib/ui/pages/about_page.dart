@@ -127,6 +127,16 @@ class AboutPage extends StatelessWidget {
                 T('媒体引擎是开源的 avox（AGPL-3.0 / 商业双许可）。',
                   style: AkText.body.copyWith(color: AkColors.muted),
                 ),
+                const SizedBox(height: 10),
+                T(
+                  'Avoxkit 本身也以 AGPL-3.0 开源，源代码：',
+                  style: AkText.body.copyWith(color: AkColors.muted),
+                ),
+                const SizedBox(height: 4),
+                SelectableText(
+                  'https://github.com/xxxzhou/avoxkit',
+                  style: AkText.mono,
+                ),
                 const SizedBox(height: 16),
                 T(
                   'avox ${version ?? '—'} · ffmpeg ${ffmpeg ?? '—'} · '
