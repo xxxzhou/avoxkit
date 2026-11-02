@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import '../native/ak_bindings.dart';
+import './i18n.dart';
 
 /// 一帧参考画面: JPEG 字节 + 实际解到的帧时间。
 class MediaFrame {
@@ -66,9 +67,9 @@ class MediaFrames {
     }
     switch (reason) {
       case 'render_unavailable':
-        return 'Vulkan 组件未启用，缩略图/画面预览不可用';
+        return I18n.tr('Vulkan 组件未启用，缩略图/画面预览不可用');
       case 'unsupported_pix_fmt':
-        return '该视频的像素格式不支持画面预览';
+        return I18n.tr('该视频的像素格式不支持画面预览');
       default:
         return null;
     }

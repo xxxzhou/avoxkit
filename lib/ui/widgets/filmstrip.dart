@@ -43,7 +43,7 @@ class AkFilmstrip extends StatelessWidget {
           }
           final span = math.max(1.0, viewEnd - viewStart);
           // 一格 = 一个采样间隔; 放大后单张不再拉伸, 保持引擎输出的
-          // 显示宽高比, 露出的空隙就是"这里没有采样帧", 不假装有连续画面。
+          // 显示宽高比, 露出的空隙就是I18n.tr("这里没有采样帧"), 不假装有连续画面。
           final cellPx = durationMs / frames.length / span * width;
           final aspect = frameWidth > 0 && frameHeight > 0
               ? frameWidth / frameHeight

@@ -4,6 +4,7 @@ import '../../core/task_group.dart';
 import '../../core/task_store.dart';
 import '../tokens.dart';
 import 'panel.dart';
+import '../../core/i18n.dart';
 
 /// 批量组的进度卡; 工具页用紧凑版, 任务页展开子任务
 class AkGroupCard extends StatelessWidget {
@@ -54,7 +55,7 @@ class AkGroupCard extends StatelessWidget {
                   StateDot(color: color),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: Text(
+                    child: T(
                       '${group.toolLabel} · ${group.title}',
                       style: AkText.body.copyWith(color: AkColors.textStrong),
                       maxLines: 1,
@@ -64,7 +65,7 @@ class AkGroupCard extends StatelessWidget {
                   if (active > 0)
                     TextButton(
                       onPressed: () => taskStore.cancelGroup(group.id),
-                      child: const Text('取消整组'),
+                      child: const T('取消整组'),
                     ),
                 ],
               ),
@@ -79,8 +80,7 @@ class AkGroupCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 8),
-              Text(
-                '完成 $done · 失败 $failed · 进行中 $running'
+              T('完成 $done · 失败 $failed · 进行中 $running'
                 '${queued > 0 ? ' · 排队 $queued' : ''}'
                 '${group.skipped > 0 ? ' · 跳过 ${group.skipped}' : ''}',
                 style: AkText.micro,
@@ -92,11 +92,11 @@ class AkGroupCard extends StatelessWidget {
                     final retried = taskStore.retryGroupFailed(group.id);
                     if (retried == 0) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('没有可重试的任务')),
+                        const SnackBar(content: T('没有可重试的任务')),
                       );
                     }
                   },
-                  child: const Text('重试失败项'),
+                  child: const T('重试失败项'),
                 ),
               ],
               if (showTasks && tasks.isNotEmpty) ...[
@@ -126,16 +126,16 @@ class AkGroupCard extends StatelessWidget {
                           ),
                           const SizedBox(width: 8),
                           Expanded(
-                            child: Text(
+                            child: T(
                               task.title,
                               style: AkText.micro,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
-                          Text(
+                          T(
                             task.state == 'failed'
-                                ? (task.errorCode ?? '失败')
+                                ? (task.errorCode ?? I18n.tr('失败'))
                                 : task.state == 'queued'
                                     ? '前面 ${taskStore.queueAhead(task)} 个'
                                     : task.stateLabel,

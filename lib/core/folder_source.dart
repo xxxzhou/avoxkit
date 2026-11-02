@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
-import 'package:path/path.dart' as p;
 
+import 'app_paths.dart';
 import 'batch.dart';
 import 'folder_scan.dart';
 
@@ -103,7 +103,7 @@ class FolderSource extends ChangeNotifier {
     if (folder.isEmpty) {
       return '';
     }
-    return p.join(p.dirname(folder), '${p.basename(folder)}-$rootTag');
+    return AppPaths.suggestedBatchRoot(folder, rootTag);
   }
 
   /// 按工具的扩展名/命名规则展开; 结果按参数缓存, 避免拖动滑块时反复查磁盘

@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:path/path.dart' as p;
 
 import '../native/ak_events.dart';
+import './i18n.dart';
 
 class TaskItem {
   TaskItem({
@@ -61,15 +62,15 @@ class TaskItem {
   String get stateLabel {
     switch (state) {
       case 'queued':
-        return '排队中';
+        return I18n.tr('排队中');
       case 'running':
-        return '处理中';
+        return I18n.tr('处理中');
       case 'done':
-        return '已完成';
+        return I18n.tr('已完成');
       case 'failed':
-        return '失败';
+        return I18n.tr('失败');
       case 'cancelled':
-        return '已取消';
+        return I18n.tr('已取消');
       default:
         return state;
     }
@@ -78,34 +79,34 @@ class TaskItem {
   String get stageLabel {
     switch (stage) {
       case 'opening':
-        return '打开文件';
+        return I18n.tr('打开文件');
       case 'subtitle_extract':
-        return '读取字幕轨';
+        return I18n.tr('读取字幕轨');
       case 'decode':
-        return '解码图片';
+        return I18n.tr('解码图片');
       case 'decode_mask':
-        return '读取涂抹区域';
+        return I18n.tr('读取涂抹区域');
       case 'detect':
-        return '识别水印';
+        return I18n.tr('识别水印');
       case 'inpaint':
-        return '修复中';
+        return I18n.tr('修复中');
       case 'encode':
-        return '写入图片';
+        return I18n.tr('写入图片');
       case 'recording':
         return switch (kind) {
-          'extract' => '提取中',
-          'remux' => '封装中',
-          'subtitle' => '识别中',
-          'trim' => '截取中',
-          _ => '转码中',
+          'extract' => I18n.tr('提取中'),
+          'remux' => I18n.tr('封装中'),
+          'subtitle' => I18n.tr('识别中'),
+          'trim' => I18n.tr('截取中'),
+          _ => I18n.tr('转码中'),
         };
       case 'closing':
-        return '收尾';
+        return I18n.tr('收尾');
       default:
         return switch (kind) {
-          'subtitle' => '字幕处理',
-          'image' => '图像修复',
-          _ => '处理中',
+          'subtitle' => I18n.tr('字幕处理'),
+          'image' => I18n.tr('图像修复'),
+          _ => I18n.tr('处理中'),
         };
     }
   }
@@ -157,7 +158,7 @@ class TaskItem {
       return;
     }
     if (wavePeaks.isEmpty) {
-      // 截取任务的进度已经映射成"片段内相对时间", 波形也从 0 起算
+      // 截取任务的进度已经映射成I18n.tr("片段内相对时间"), 波形也从 0 起算
       waveStartMs = kind == 'trim' ? 0 : (event.ptsMs ?? 0);
       waveBucketMs = event.bucketMs ?? 100;
     }

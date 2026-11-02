@@ -22,9 +22,10 @@ import '../widgets/group_card.dart';
 import '../widgets/media_source.dart';
 import '../widgets/panel.dart';
 import '../widgets/task_summary.dart';
+import '../../core/i18n.dart';
 
-const _imageTypes = XTypeGroup(
-  label: '图片',
+final _imageTypes = XTypeGroup(
+  label: I18n.tr('图片'),
   extensions: ['jpg', 'jpeg', 'png', 'bmp', 'webp'],
 );
 
@@ -177,7 +178,7 @@ class _RepairPageState extends State<RepairPage> {
       : null;
 
   Future<void> _pickInput() async {
-    final file = await openFile(acceptedTypeGroups: const [_imageTypes]);
+    final file = await openFile(acceptedTypeGroups: [_imageTypes]);
     if (file == null) {
       return;
     }
@@ -309,7 +310,7 @@ class _RepairPageState extends State<RepairPage> {
       return;
     }
     if (!_model.ready) {
-      _snack('先下载图像修复模型');
+      _snack(I18n.tr('先下载图像修复模型'));
       return;
     }
     setState(() {
@@ -331,20 +332,20 @@ class _RepairPageState extends State<RepairPage> {
     if (result.found && result.boxes.isNotEmpty) {
       _snack('识别到 ${result.boxes.length} 处可疑水印');
     } else {
-      _snack('没有识别到水印，可以改用手动涂抹');
+      _snack(I18n.tr('没有识别到水印，可以改用手动涂抹'));
     }
   }
 
   String _detectError(ImageDetectResult result) {
     switch (result.code) {
       case 'model_missing':
-        return '图像修复模型未下载';
+        return I18n.tr('图像修复模型未下载');
       case 'inpaint_unavailable':
-        return '图像修复组件不可用';
+        return I18n.tr('图像修复组件不可用');
       case 'image_decode_failed':
-        return '无法读取这张图片';
+        return I18n.tr('无法读取这张图片');
       default:
-        return result.message ?? '水印识别失败';
+        return result.message ?? I18n.tr('水印识别失败');
     }
   }
 
@@ -359,27 +360,27 @@ class _RepairPageState extends State<RepairPage> {
     final input = _inputPath;
     final output = _outputPath;
     if (input == null) {
-      _snack('先选择一张图片');
+      _snack(I18n.tr('先选择一张图片'));
       return;
     }
     if (output == null || output.isEmpty) {
-      _snack('先选择输出位置');
+      _snack(I18n.tr('先选择输出位置'));
       return;
     }
     if (!File(input).existsSync()) {
-      _snack('输入图片不存在');
+      _snack(I18n.tr('输入图片不存在'));
       return;
     }
     if (!_imageRepairAvailable) {
-      _snack('图像修复组件未随包提供');
+      _snack(I18n.tr('图像修复组件未随包提供'));
       return;
     }
     if (_mode == _RepairMode.mask && _strokes.isEmpty) {
-      _snack('先在图片上涂抹要修复的区域');
+      _snack(I18n.tr('先在图片上涂抹要修复的区域'));
       return;
     }
     if (_mode == _RepairMode.mask && (_imageWidth <= 0 || _imageHeight <= 0)) {
-      _snack('这张图片无法预览，改用手动涂抹不可用');
+      _snack(I18n.tr('这张图片无法预览，改用手动涂抹不可用'));
       return;
     }
     setState(() {
@@ -388,7 +389,7 @@ class _RepairPageState extends State<RepairPage> {
     });
     try {
       if (!_model.ready) {
-        setState(() => _submitProgress = '正在下载图像修复模型…');
+        setState(() => _submitProgress = I18n.tr('正在下载图像修复模型…'));
         await _downloadModel();
         if (!mounted || !_model.ready) {
           return;
@@ -396,10 +397,10 @@ class _RepairPageState extends State<RepairPage> {
       }
       String? maskPath;
       if (_mode == _RepairMode.mask) {
-        setState(() => _submitProgress = '正在生成涂抹区域…');
+        setState(() => _submitProgress = I18n.tr('正在生成涂抹区域…'));
         maskPath = await _writeMask();
         if (maskPath == null) {
-          _snack('涂抹区域生成失败，请重试');
+          _snack(I18n.tr('涂抹区域生成失败，请重试'));
           return;
         }
       }
@@ -444,20 +445,20 @@ class _RepairPageState extends State<RepairPage> {
   Future<void> _submitFolder() async {
     final plan = _plan();
     if (plan == null || plan.pending.isEmpty) {
-      _snack('当前没有可处理的图片');
+      _snack(I18n.tr('当前没有可处理的图片'));
       return;
     }
     if (!_imageRepairAvailable) {
-      _snack('图像修复组件未随包提供');
+      _snack(I18n.tr('图像修复组件未随包提供'));
       return;
     }
     setState(() {
       _submitting = true;
-      _submitProgress = '正在准备…';
+      _submitProgress = I18n.tr('正在准备…');
     });
     try {
       if (!_model.ready) {
-        setState(() => _submitProgress = '正在下载图像修复模型…');
+        setState(() => _submitProgress = I18n.tr('正在下载图像修复模型…'));
         await _downloadModel();
         if (!mounted || !_model.ready) {
           return;
@@ -468,7 +469,7 @@ class _RepairPageState extends State<RepairPage> {
         title: p.basename(_folder.root!),
         root: _folder.root!,
         kind: 'image',
-        toolLabel: '图像修复',
+        toolLabel: I18n.tr('图像修复'),
         outputPolicy: _folder.policy.name,
         params: params,
         skipped: plan.skippedExisting,
@@ -617,7 +618,7 @@ class _RepairPageState extends State<RepairPage> {
 
   void _snack(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
+      SnackBar(content: T(message)),
     );
   }
 
@@ -632,10 +633,9 @@ class _RepairPageState extends State<RepairPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const PageHeader(
-                title: '图像修复',
-                description: '自动识别并去除图片里的水印、台标和文字，也可以手动涂抹要修复的区域。'
-                    '本地处理，文件不上传。',
+              PageHeader(
+                title: I18n.tr('图像修复'),
+                description: I18n.tr('自动识别并去除图片里的水印、台标和文字，也可以手动涂抹要修复的区域。' '本地处理，文件不上传。'),
               ),
               const SizedBox(height: 24),
               LayoutBuilder(
@@ -674,12 +674,12 @@ class _RepairPageState extends State<RepairPage> {
         children: [
           Row(
             children: [
-              Text(folderMode ? '文件夹' : '图片', style: AkText.panelTitle),
+              T(folderMode ? I18n.tr('文件夹') : I18n.tr('图片'), style: AkText.panelTitle),
               const Spacer(),
               if (_inputPath != null && !folderMode)
                 TextButton(
                   onPressed: _pickInput,
-                  child: const Text('重新选择'),
+                  child: const T('重新选择'),
                 ),
             ],
           ),
@@ -692,13 +692,13 @@ class _RepairPageState extends State<RepairPage> {
                   source: _folder,
                   plan: _plan(),
                   onPickAnother: _pickFolder,
-                  noun: '图片',
+                  noun: I18n.tr('图片'),
                 ),
                 Align(
                   alignment: Alignment.centerLeft,
                   child: TextButton(
                     onPressed: _pickInput,
-                    child: const Text('改成处理单张图片'),
+                    child: const T('改成处理单张图片'),
                   ),
                 ),
               ],
@@ -707,19 +707,19 @@ class _RepairPageState extends State<RepairPage> {
             AkSourcePicker(
               onFile: _pickInput,
               onFolder: _pickFolder,
-              hint: 'JPG / PNG / BMP / WebP，也可以整个文件夹批量处理',
+              hint: I18n.tr('JPG / PNG / BMP / WebP，也可以整个文件夹批量处理'),
             )
           else
             _buildSinglePreview(),
           const SizedBox(height: 20),
           const Divider(height: 1),
           const SizedBox(height: 16),
-          Text(
+          T(
             folderMode
-                ? '批量按自动识别处理：每张图独立找水印，识别不到就跳过。'
-                    '输出默认放在源文件旁，文件名加 -repaired；重跑会覆盖同名结果。'
-                : '自动识别适合水印位置不固定的图；手动涂抹适合已知位置的台标或文字。'
-                    '重跑会覆盖同名的 -repaired 文件。',
+                ? I18n.tr('批量按自动识别处理：每张图独立找水印，识别不到就跳过。'
+                    '输出默认放在源文件旁，文件名加 -repaired；重跑会覆盖同名结果。')
+                : I18n.tr('自动识别适合水印位置不固定的图；手动涂抹适合已知位置的台标或文字。'
+                    '重跑会覆盖同名的 -repaired 文件。'),
             style: AkText.micro,
           ),
           const SizedBox(height: 20),
@@ -741,7 +741,7 @@ class _RepairPageState extends State<RepairPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(
+        T(
           p.basename(_inputPath!),
           style: AkText.body.copyWith(
             color: AkColors.textStrong,
@@ -751,7 +751,7 @@ class _RepairPageState extends State<RepairPage> {
           overflow: TextOverflow.ellipsis,
         ),
         const SizedBox(height: 4),
-        Text(
+        T(
           p.dirname(_inputPath!),
           style: AkText.micro,
           maxLines: 1,
@@ -760,15 +760,15 @@ class _RepairPageState extends State<RepairPage> {
         const SizedBox(height: 16),
         Row(
           children: [
-            Text(
-              _mode == _RepairMode.auto ? '自动识别' : '手动涂抹',
+            T(
+              _mode == _RepairMode.auto ? I18n.tr('自动识别') : I18n.tr('手动涂抹'),
               style: AkText.label,
             ),
             if (_resultBytes != null) ...[
               const SizedBox(width: 12),
               TextButton(
                 onPressed: () => setState(() => _showOriginal = !_showOriginal),
-                child: Text(_showOriginal ? '看修复后' : '看原图'),
+                child: T(_showOriginal ? I18n.tr('看修复后') : I18n.tr('看原图')),
               ),
             ],
           ],
@@ -788,15 +788,15 @@ class _RepairPageState extends State<RepairPage> {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(Icons.search, size: 17),
-                label: Text(_detecting ? '识别中…' : '识别水印'),
+                label: T(_detecting ? I18n.tr('识别中…') : I18n.tr('识别水印')),
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: Text(
+                child: T(
                   _detect == null
-                      ? '也可以直接修复，任务里会自动识别。'
+                      ? I18n.tr('也可以直接修复，任务里会自动识别。')
                       : _detect!.boxes.isEmpty
-                      ? '没有识别到水印，试试手动涂抹。'
+                      ? I18n.tr('没有识别到水印，试试手动涂抹。')
                       : '识别到 ${_detect!.boxes.length} 处可疑水印。',
                   style: AkText.micro,
                   maxLines: 2,
@@ -809,7 +809,7 @@ class _RepairPageState extends State<RepairPage> {
           const SizedBox(height: 10),
           Row(
             children: [
-              Text('笔刷', style: AkText.label),
+              T('笔刷', style: AkText.label),
               Expanded(
                 child: Slider(
                   value: _brush,
@@ -818,7 +818,7 @@ class _RepairPageState extends State<RepairPage> {
                   onChanged: (value) => setState(() => _brush = value),
                 ),
               ),
-              Text('${(_brush * 100).round()}%', style: AkText.mono),
+              T('${(_brush * 100).round()}%', style: AkText.mono),
             ],
           ),
           Row(
@@ -828,42 +828,42 @@ class _RepairPageState extends State<RepairPage> {
                     ? null
                     : () => setState(() => _strokes.removeLast()),
                 icon: const Icon(Icons.undo, size: 16),
-                label: const Text('撤销'),
+                label: const T('撤销'),
               ),
               TextButton.icon(
                 onPressed: _strokes.isEmpty
                     ? null
                     : () => setState(() => _strokes.clear()),
                 icon: const Icon(Icons.layers_clear_outlined, size: 16),
-                label: const Text('清空'),
+                label: const T('清空'),
               ),
             ],
           ),
         ],
         if (_imageError != null) ...[
           const SizedBox(height: 8),
-          Text(
+          T(
             _imageError!,
             style: AkText.body.copyWith(color: AkColors.danger),
           ),
         ],
         if (running) ...[
           const SizedBox(height: 8),
-          Text(
+          T(
             '${task.stageLabel}…',
             style: AkText.micro.copyWith(color: AkColors.accent),
           ),
         ] else if (task != null && task.state == 'failed') ...[
           const SizedBox(height: 8),
-          Text(
-            task.errorMessage ?? '修复失败',
+          T(
+            task.errorMessage ?? I18n.tr('修复失败'),
             style: AkText.body.copyWith(color: AkColors.danger),
           ),
         ],
         const SizedBox(height: 12),
         TextButton(
           onPressed: _pickFolder,
-          child: const Text('改成处理整个文件夹'),
+          child: const T('改成处理整个文件夹'),
         ),
       ],
     );
@@ -945,8 +945,8 @@ class _RepairPageState extends State<RepairPage> {
                     color: AkColors.faint,
                   ),
                   const SizedBox(height: 10),
-                  Text(
-                    _imageError ?? '预览加载中…',
+                  T(
+                    _imageError ?? I18n.tr('预览加载中…'),
                     style: AkText.body.copyWith(color: AkColors.muted),
                     textAlign: TextAlign.center,
                   ),
@@ -963,8 +963,7 @@ class _RepairPageState extends State<RepairPage> {
                   color: AkColors.accent.withValues(alpha: 0.92),
                   borderRadius: BorderRadius.circular(4),
                 ),
-                child: const Text(
-                  '修复后',
+                child: const T('修复后',
                   style: TextStyle(
                     fontSize: 11,
                     color: AkColors.accentInk,
@@ -982,8 +981,7 @@ class _RepairPageState extends State<RepairPage> {
               left: 12,
               right: 12,
               bottom: 12,
-              child: Text(
-                '在图片上按住拖动，涂出要移除的区域',
+              child: T('在图片上按住拖动，涂出要移除的区域',
                 style: AkText.micro.copyWith(color: AkColors.muted),
                 textAlign: TextAlign.center,
               ),
@@ -1020,11 +1018,10 @@ class _RepairPageState extends State<RepairPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('修复方式', style: AkText.panelTitle),
+          T('修复方式', style: AkText.panelTitle),
           const SizedBox(height: 12),
           if (folderMode)
-            Text(
-              '批量统一用自动识别；单张涂抹区域不套用到整个文件夹。',
+            T('批量统一用自动识别；单张涂抹区域不套用到整个文件夹。',
               style: AkText.body.copyWith(color: AkColors.muted),
             )
           else
@@ -1032,11 +1029,11 @@ class _RepairPageState extends State<RepairPage> {
               segments: const [
                 ButtonSegment(
                   value: _RepairMode.auto,
-                  label: Text('自动识别水印'),
+                  label: T('自动识别水印'),
                 ),
                 ButtonSegment(
                   value: _RepairMode.mask,
-                  label: Text('手动涂抹'),
+                  label: T('手动涂抹'),
                 ),
               ],
               selected: {_mode},
@@ -1051,7 +1048,7 @@ class _RepairPageState extends State<RepairPage> {
               }),
             ),
           const SizedBox(height: 20),
-          Text('输出格式', style: AkText.label),
+          T('输出格式', style: AkText.label),
           const SizedBox(height: 8),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -1068,15 +1065,15 @@ class _RepairPageState extends State<RepairPage> {
                 items: const [
                   DropdownMenuItem(
                     value: _OutputFormat.keep,
-                    child: Text('保持原格式'),
+                    child: T('保持原格式'),
                   ),
                   DropdownMenuItem(
                     value: _OutputFormat.png,
-                    child: Text('PNG'),
+                    child: T('PNG'),
                   ),
                   DropdownMenuItem(
                     value: _OutputFormat.jpg,
-                    child: Text('JPG'),
+                    child: T('JPG'),
                   ),
                 ],
                 onChanged: (value) {
@@ -1088,21 +1085,21 @@ class _RepairPageState extends State<RepairPage> {
             ),
           ),
           const SizedBox(height: 6),
-          Text(
+          T(
             _format == _OutputFormat.keep
-                ? 'JPG 会轻微损失画质；需要继续编辑建议 PNG。'
+                ? I18n.tr('JPG 会轻微损失画质；需要继续编辑建议 PNG。')
                 : '统一转成 ${_format.name.toUpperCase()}。',
             style: AkText.micro,
           ),
           if (!folderMode) ...[
             const SizedBox(height: 20),
-            Text('输出文件', style: AkText.label),
+            T('输出文件', style: AkText.label),
             const SizedBox(height: 8),
             Row(
               children: [
                 Expanded(
-                  child: Text(
-                    _outputPath == null ? '尚未选择' : p.basename(_outputPath!),
+                  child: T(
+                    _outputPath == null ? I18n.tr('尚未选择') : p.basename(_outputPath!),
                     style: AkText.body.copyWith(
                       color: _outputPath == null
                           ? AkColors.faint
@@ -1115,13 +1112,13 @@ class _RepairPageState extends State<RepairPage> {
                 const SizedBox(width: 8),
                 OutlinedButton(
                   onPressed: _inputPath == null ? null : _pickOutput,
-                  child: const Text('选择'),
+                  child: const T('选择'),
                 ),
               ],
             ),
             if (_outputPath != null) ...[
               const SizedBox(height: 4),
-              Text(
+              T(
                 p.dirname(_outputPath!),
                 style: AkText.micro,
                 maxLines: 1,
@@ -1141,25 +1138,25 @@ class _RepairPageState extends State<RepairPage> {
           ],
           if (_submitProgress != null) ...[
             const SizedBox(height: 16),
-            Text(_submitProgress!, style: AkText.micro),
+            T(_submitProgress!, style: AkText.micro),
           ],
           const SizedBox(height: 28),
           FilledButton(
             onPressed: canSubmit ? _submit : null,
-            child: Text(
+            child: T(
               _submitting
-                  ? '提交中…'
+                  ? I18n.tr('提交中…')
                   : folderMode
                   ? (_lastGroupId != null
-                        ? '已提交'
+                        ? I18n.tr('已提交')
                         : plan == null || plan.pending.isEmpty
-                        ? '没有可处理的图片'
+                        ? I18n.tr('没有可处理的图片')
                         : '开始修复 ${plan.count} 张图片')
                   : !_model.ready
-                  ? '下载模型并开始修复'
+                  ? I18n.tr('下载模型并开始修复')
                   : _mode == _RepairMode.mask
-                  ? '修复涂抹区域'
-                  : '开始修复',
+                  ? I18n.tr('修复涂抹区域')
+                  : I18n.tr('开始修复'),
             ),
           ),
         ],
@@ -1180,9 +1177,9 @@ class _RepairPageState extends State<RepairPage> {
           const StateDot(color: AkColors.state),
           const SizedBox(width: 8),
           Expanded(
-            child: Text('图像修复模型已就绪', style: AkText.micro),
+            child: T('图像修复模型已就绪', style: AkText.micro),
           ),
-          Text(InpaintModel.license, style: AkText.micro),
+          T(InpaintModel.license, style: AkText.micro),
         ],
       ),
     );
@@ -1204,9 +1201,9 @@ class _RepairPageState extends State<RepairPage> {
             Row(
               children: [
                 Expanded(
-                  child: Text('正在下载图像修复模型', style: AkText.body),
+                  child: T('正在下载图像修复模型', style: AkText.body),
                 ),
-                Text('$pct%', style: AkText.mono),
+                T('$pct%', style: AkText.mono),
               ],
             ),
             const SizedBox(height: 8),
@@ -1215,12 +1212,12 @@ class _RepairPageState extends State<RepairPage> {
               minHeight: 3,
             ),
             const SizedBox(height: 4),
-            Text(InpaintModel.license, style: AkText.micro),
+            T(InpaintModel.license, style: AkText.micro),
             Align(
               alignment: Alignment.centerRight,
               child: TextButton(
                 onPressed: _model.cancel,
-                child: const Text('取消下载'),
+                child: const T('取消下载'),
               ),
             ),
           ],
@@ -1237,17 +1234,16 @@ class _RepairPageState extends State<RepairPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('图像修复模型未下载', style: AkText.body),
+          T('图像修复模型未下载', style: AkText.body),
           const SizedBox(height: 4),
-          Text(
-            '首次修复才下载，${InpaintModel.downloadSizeLabel}，不随安装包分发。',
+          T('首次修复才下载，${InpaintModel.downloadSizeLabel}，不随安装包分发。',
             style: AkText.micro,
           ),
           const SizedBox(height: 2),
-          Text(InpaintModel.license, style: AkText.micro),
+          T(InpaintModel.license, style: AkText.micro),
           if (_model.error != null) ...[
             const SizedBox(height: 8),
-            Text(
+            T(
               _model.error!,
               style: AkText.micro.copyWith(color: AkColors.danger),
             ),
@@ -1255,7 +1251,7 @@ class _RepairPageState extends State<RepairPage> {
           const SizedBox(height: 8),
           OutlinedButton(
             onPressed: _downloadModel,
-            child: const Text('下载模型'),
+            child: const T('下载模型'),
           ),
         ],
       ),

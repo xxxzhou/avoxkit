@@ -5,8 +5,9 @@ import '../../core/task.dart';
 import '../tokens.dart';
 import 'live_preview.dart';
 import 'waveform.dart';
+import '../../core/i18n.dart';
 
-/// 预览跟"实际在转什么"走: 视频重编→画面, 仅音频重编→波形, 都直拷→进度
+/// 预览跟I18n.tr("实际在转什么")走: 视频重编→画面, 仅音频重编→波形, 都直拷→进度
 enum TaskVisualMode { video, audio, progress }
 
 TaskVisualMode taskVisualMode(TaskItem task) {
@@ -45,7 +46,7 @@ class AkTaskVisual extends StatelessWidget {
           taskId: task.id,
           // 终态任务不再占着原生窗, 露出占位, 也避免残留最后一帧
           active: active && task.isActive,
-          placeholder: Text(
+          placeholder: T(
             _videoHint,
             style: AkText.body.copyWith(color: AkColors.muted),
           ),
@@ -66,19 +67,19 @@ class AkTaskVisual extends StatelessWidget {
         if (task.hasWave) {
           return _WaveBox(task: task);
         }
-        return _ProgressBox(task: task, note: '等待音频包络…');
+        return _ProgressBox(task: task, note: I18n.tr('等待音频包络…'));
       case TaskVisualMode.progress:
         return _ProgressBox(task: task);
     }
   }
 
   String get _videoHint => switch (task.state) {
-        'queued' => '排队中',
-        'running' => '等待首帧…',
-        'done' => '已完成',
-        'failed' => '任务失败',
-        'cancelled' => '已取消',
-        _ => '等待预览…',
+        'queued' => I18n.tr('排队中'),
+        'running' => I18n.tr('等待首帧…'),
+        'done' => I18n.tr('已完成'),
+        'failed' => I18n.tr('任务失败'),
+        'cancelled' => I18n.tr('已取消'),
+        _ => I18n.tr('等待预览…'),
       };
 }
 
@@ -109,15 +110,15 @@ class _WaveBox extends StatelessWidget {
           const SizedBox(height: 8),
           Row(
             children: [
-              Text('音频包络 · ${task.waveBucketMs}ms/格', style: AkText.micro),
+              T('音频包络 · ${task.waveBucketMs}ms/格', style: AkText.micro),
               const Spacer(),
               if (task.state == 'running')
-                Text(
+                T(
                   '${(task.progress * 100).round()}%',
                   style: AkText.mono.copyWith(fontSize: 11),
                 )
               else
-                Text(task.stateLabel, style: AkText.micro),
+                T(task.stateLabel, style: AkText.micro),
             ],
           ),
         ],
@@ -137,7 +138,7 @@ class _ProgressBox extends StatelessWidget {
     final running = task.state == 'running';
     final label = note ??
         (task.state == 'running'
-            ? (task.stage != null ? task.stageLabel : '处理中')
+            ? (task.stage != null ? task.stageLabel : I18n.tr('处理中'))
             : task.stateLabel);
     return Container(
       height: 132,
@@ -151,7 +152,7 @@ class _ProgressBox extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
+          T(
             label,
             style: AkText.body.copyWith(color: AkColors.muted),
             textAlign: TextAlign.center,
@@ -171,13 +172,13 @@ class _ProgressBox extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text(
+                T(
                   '${(task.progress * 100).round()}%',
                   style: AkText.mono.copyWith(fontSize: 11),
                 ),
                 if (_time(task.currentMs, task.totalMs).isNotEmpty) ...[
                   const SizedBox(width: 8),
-                  Text(
+                  T(
                     _time(task.currentMs, task.totalMs),
                     style: AkText.micro,
                   ),

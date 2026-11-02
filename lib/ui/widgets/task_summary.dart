@@ -5,6 +5,7 @@ import '../../core/task.dart';
 import '../../core/task_store.dart';
 import '../tokens.dart';
 import 'panel.dart';
+import '../../core/i18n.dart';
 
 /// 工具页底部的单任务回执: 进度 / 取消 / 错误 / 产物路径。
 /// 只认本页提交的任务; 退回全局最新会把别的工具的任务显示在这里。
@@ -26,7 +27,7 @@ class AkLatestTask extends StatelessWidget {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('最近任务', style: AkText.label),
+            T('最近任务', style: AkText.label),
             const SizedBox(height: 10),
             AkTaskSummary(task: task, taskStore: taskStore),
           ],
@@ -69,7 +70,7 @@ class AkTaskSummary extends StatelessWidget {
               StateDot(color: color),
               const SizedBox(width: 8),
               Expanded(
-                child: Text(
+                child: T(
                   '${task.stateLabel} · ${task.title}',
                   style: AkText.body.copyWith(color: AkColors.textStrong),
                   maxLines: 1,
@@ -81,7 +82,7 @@ class AkTaskSummary extends StatelessWidget {
                   onPressed: task.cancelRequested
                       ? null
                       : () => taskStore.cancel(task.id),
-                  child: Text(task.cancelRequested ? '取消中…' : '取消'),
+                  child: T(task.cancelRequested ? I18n.tr('取消中…') : I18n.tr('取消')),
                 ),
             ],
           ),
@@ -99,12 +100,12 @@ class AkTaskSummary extends StatelessWidget {
             const SizedBox(height: 8),
             Row(
               children: [
-                Text(
-                  task.stage != null ? task.stageLabel : '等待中',
+                T(
+                  task.stage != null ? task.stageLabel : I18n.tr('等待中'),
                   style: AkText.micro,
                 ),
                 const Spacer(),
-                Text(
+                T(
                   '${(task.progress * 100).round()}%',
                   style: AkText.mono.copyWith(fontSize: 11),
                 ),
@@ -113,12 +114,12 @@ class AkTaskSummary extends StatelessWidget {
           ],
           if (task.state == 'failed') ...[
             const SizedBox(height: 8),
-            Text(
-              task.errorMessage ?? '任务失败',
+            T(
+              task.errorMessage ?? I18n.tr('任务失败'),
               style: AkText.body.copyWith(color: AkColors.danger),
             ),
             if (task.errorCode != null)
-              Text(task.errorCode!, style: AkText.micro),
+              T(task.errorCode!, style: AkText.micro),
           ],
           if (task.state == 'done' && task.output != null) ...[
             const SizedBox(height: 8),
@@ -143,7 +144,7 @@ class AkOutputPath extends StatelessWidget {
     }
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('已复制路径到剪贴板'),
+        content: T('已复制路径到剪贴板'),
         duration: Duration(seconds: 2),
       ),
     );
@@ -152,7 +153,7 @@ class AkOutputPath extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Tooltip(
-      message: '双击复制路径',
+      message: I18n.tr('双击复制路径'),
       waitDuration: const Duration(milliseconds: 400),
       child: MouseRegion(
         cursor: SystemMouseCursors.click,
@@ -161,7 +162,7 @@ class AkOutputPath extends StatelessWidget {
           onDoubleTap: () => _copy(context),
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 4),
-            child: Text(
+            child: T(
               path,
               style: AkText.micro,
               maxLines: 1,
