@@ -5,6 +5,7 @@ import '../../core/batch.dart';
 import '../../core/folder_source.dart';
 import '../tokens.dart';
 import 'panel.dart';
+import '../../core/i18n.dart';
 
 /// 工具页的文件夹输入卡: 路径、递归、匹配数量与展开计划
 class FolderCard extends StatelessWidget {
@@ -35,7 +36,7 @@ class FolderCard extends StatelessWidget {
             Row(
               children: [
                 Expanded(
-                  child: Text(
+                  child: T(
                     source.root!,
                     style: AkText.body.copyWith(
                       color: AkColors.textStrong,
@@ -48,7 +49,7 @@ class FolderCard extends StatelessWidget {
                 const SizedBox(width: 8),
                 TextButton(
                   onPressed: onPickAnother,
-                  child: const Text('换一个'),
+                  child: const T('换一个'),
                 ),
               ],
             ),
@@ -60,7 +61,7 @@ class FolderCard extends StatelessWidget {
                   onChanged: source.scanning ? null : source.setRecursive,
                 ),
                 const SizedBox(width: 8),
-                Text('包含子文件夹', style: AkText.body),
+                T('包含子文件夹', style: AkText.body),
               ],
             ),
             if (source.scanning)
@@ -70,39 +71,36 @@ class FolderCard extends StatelessWidget {
               )
             else if (scan != null) ...[
               if (scan.error != null)
-                Text(
+                T(
                   scan.error!,
                   style: AkText.body.copyWith(color: AkColors.danger),
                 )
               else if (scan.count == 0)
-                Text(
-                  '没有找到匹配的$noun。',
+                T('没有找到匹配的$noun。',
                   style: AkText.body.copyWith(color: AkColors.muted),
                 )
               else ...[
                 LabeledRow(
-                  label: '匹配',
+                  label: I18n.tr('匹配'),
                   value: '${scan.count} 个$noun · ${formatSize(scan.totalBytes)}',
                 ),
                 if (plan != null)
                   LabeledRow(
-                    label: '待处理',
+                    label: I18n.tr('待处理'),
                     value: '${plan!.count} 个'
                         '${plan!.skippedExisting > 0 ? ' · ${plan!.skippedExisting} 个已存在将跳过' : ''}',
                   ),
                 if (scan.truncated)
                   Padding(
                     padding: const EdgeInsets.only(top: 8),
-                    child: Text(
-                      '文件数超过上限（5000），已停止扫描，请缩小范围。',
+                    child: T('文件数超过上限（5000），已停止扫描，请缩小范围。',
                       style: AkText.micro.copyWith(color: AkColors.danger),
                     ),
                   ),
               ],
             ],
             const SizedBox(height: 12),
-            Text(
-              '扫描结果在提交时固定；之后文件夹里新增的文件不会自动加入。',
+            T('扫描结果在提交时固定；之后文件夹里新增的文件不会自动加入。',
               style: AkText.micro,
             ),
           ],
@@ -126,19 +124,19 @@ class OutputPolicyPicker extends StatelessWidget {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('输出位置', style: AkText.label),
+            T('输出位置', style: AkText.label),
             const SizedBox(height: 8),
             SegmentedButton<OutputPolicy>(
               segments: const [
                 ButtonSegment(
                   value: OutputPolicy.sidecar,
-                  label: Text('源文件旁'),
+                  label: T('源文件旁'),
                 ),
                 ButtonSegment(
                   value: OutputPolicy.mirror,
-                  label: Text('保留结构'),
+                  label: T('保留结构'),
                 ),
-                ButtonSegment(value: OutputPolicy.flat, label: Text('平铺')),
+                ButtonSegment(value: OutputPolicy.flat, label: T('平铺')),
               ],
               selected: {source.policy},
               showSelectedIcon: false,
@@ -149,9 +147,9 @@ class OutputPolicyPicker extends StatelessWidget {
               Row(
                 children: [
                   Expanded(
-                    child: Text(
+                    child: T(
                       (source.outputRoot == null || source.outputRoot!.isEmpty)
-                          ? '尚未选择输出目录'
+                          ? I18n.tr('尚未选择输出目录')
                           : source.outputRoot!,
                       style: AkText.micro,
                       maxLines: 2,
@@ -166,7 +164,7 @@ class OutputPolicyPicker extends StatelessWidget {
                         source.setOutputRoot(path);
                       }
                     },
-                    child: const Text('选择'),
+                    child: const T('选择'),
                   ),
                 ],
               ),

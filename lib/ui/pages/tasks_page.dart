@@ -6,6 +6,7 @@ import '../tokens.dart';
 import '../widgets/group_card.dart';
 import '../widgets/panel.dart';
 import 'task_detail_page.dart';
+import '../../core/i18n.dart';
 
 class TasksPage extends StatelessWidget {
   const TasksPage({super.key, required this.taskStore});
@@ -27,9 +28,9 @@ class TasksPage extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const PageHeader(
-            title: '任务',
-            description: '批量组与单文件任务；失败项可以重试。',
+          PageHeader(
+            title: I18n.tr('任务'),
+            description: I18n.tr('批量组与单文件任务；失败项可以重试。'),
           ),
           const SizedBox(height: 24),
           Expanded(
@@ -88,9 +89,9 @@ class _EmptyTasks extends StatelessWidget {
         children: [
           const Icon(Icons.list_alt, color: AkColors.faint, size: 32),
           const SizedBox(height: 12),
-          Text('还没有任务', style: AkText.body.copyWith(color: AkColors.muted)),
+          T('还没有任务', style: AkText.body.copyWith(color: AkColors.muted)),
           const SizedBox(height: 4),
-          Text('在“转换”“截取片段”或“提取字幕”里选一个文件开始', style: AkText.micro),
+          T('在“转换”“截取片段”或“提取字幕”里选一个文件开始', style: AkText.micro),
         ],
       ),
     );
@@ -125,7 +126,7 @@ class _TaskCard extends StatelessWidget {
                 StateDot(color: color),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: Text(
+                  child: T(
                     task.title,
                     style: AkText.body.copyWith(
                       color: AkColors.textStrong,
@@ -136,7 +137,7 @@ class _TaskCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 12),
-                Text(
+                T(
                   '#${task.id} · ${task.stateLabel}',
                   style: AkText.micro,
                 ),
@@ -149,14 +150,14 @@ class _TaskCard extends StatelessWidget {
                     onPressed: task.cancelRequested
                         ? null
                         : () => taskStore.cancel(task.id),
-                    child: Text(task.cancelRequested ? '取消中…' : '取消'),
+                    child: T(task.cancelRequested ? I18n.tr('取消中…') : I18n.tr('取消')),
                   ),
                 ],
               ],
             ),
             if (task.input != null) ...[
               const SizedBox(height: 6),
-              Text(
+              T(
                 task.input!,
                 style: AkText.micro,
                 maxLines: 1,
@@ -165,7 +166,7 @@ class _TaskCard extends StatelessWidget {
             ],
             if (task.state == 'queued') ...[
               const SizedBox(height: 14),
-              Text(
+              T(
                 _queueLabel(taskStore.queueAhead(task)),
                 style: AkText.micro,
               ),
@@ -183,12 +184,12 @@ class _TaskCard extends StatelessWidget {
               const SizedBox(height: 8),
               Row(
                 children: [
-                  Text(
-                    task.stage != null ? task.stageLabel : '等待中',
+                  T(
+                    task.stage != null ? task.stageLabel : I18n.tr('等待中'),
                     style: AkText.micro,
                   ),
                   const Spacer(),
-                  Text(
+                  T(
                     '${(task.progress * 100).round()}%',
                     style: AkText.mono.copyWith(fontSize: 11),
                   ),
@@ -203,7 +204,7 @@ class _TaskCard extends StatelessWidget {
                       size: 14, color: AkColors.state),
                   const SizedBox(width: 6),
                   Expanded(
-                    child: Text(
+                    child: T(
                       task.output!,
                       style: AkText.micro,
                       maxLines: 1,
@@ -215,13 +216,13 @@ class _TaskCard extends StatelessWidget {
             ],
             if (task.state == 'failed') ...[
               const SizedBox(height: 12),
-              Text(
-                task.errorMessage ?? '任务失败',
+              T(
+                task.errorMessage ?? I18n.tr('任务失败'),
                 style: AkText.body.copyWith(color: AkColors.danger),
               ),
               if (task.errorCode != null || task.errorDetail != null) ...[
                 const SizedBox(height: 4),
-                Text(
+                T(
                   [task.errorCode, task.errorDetail]
                       .whereType<String>()
                       .where((value) => value.isNotEmpty)
@@ -233,7 +234,7 @@ class _TaskCard extends StatelessWidget {
               ],
               TextButton(
                 onPressed: taskStore.engine.openLogFolder,
-                child: const Text('打开日志目录'),
+                child: const T('打开日志目录'),
               ),
             ],
           ],
@@ -243,7 +244,7 @@ class _TaskCard extends StatelessWidget {
   }
 
   static String _queueLabel(int ahead) {
-    return ahead > 0 ? '排队中 · 前面还有 $ahead 个任务' : '排队中 · 即将开始';
+    return ahead > 0 ? '排队中 · 前面还有 $ahead 个任务' : I18n.tr('排队中 · 即将开始');
   }
 
   static Color _stateColor(String state) {

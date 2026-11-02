@@ -13,6 +13,7 @@ import '../native/ak_events.dart';
 import 'image_plan.dart';
 import 'media_frames.dart';
 import 'media_index.dart';
+import './i18n.dart';
 
 class EngineException implements Exception {
   EngineException(this.code, this.message);
@@ -88,7 +89,7 @@ class Engine {
       abi = bindings.abiVersion;
       if ((abi >> 16) != 1) {
         errorCode = 'abi_mismatch';
-        errorMessage = 'native ABI 不匹配';
+        errorMessage = I18n.tr('native ABI 不匹配');
         errorDetail = 'shim ABI=0x${abi.toRadixString(16)}，期望 1.x';
         return;
       }
@@ -169,7 +170,7 @@ class Engine {
     if (result['ok'] != true) {
       throw EngineException(
         result['code'] as String? ?? 'probe_failed',
-        result['message'] as String? ?? '无法读取媒体信息',
+        result['message'] as String? ?? I18n.tr('无法读取媒体信息'),
       );
     }
     return result;
@@ -279,10 +280,10 @@ class Engine {
     String model = 'lama',
   }) async {
     if (!imageAvailable) {
-      return const ImageDetectResult(
+      return ImageDetectResult(
         ok: false,
         code: 'inpaint_unavailable',
-        message: '图像修复组件不可用',
+        message: I18n.tr('图像修复组件不可用'),
       );
     }
     try {
@@ -377,41 +378,41 @@ class Engine {
   static String codeMessage(int code) {
     switch (code) {
       case -1:
-        return '参数不合法';
+        return I18n.tr('参数不合法');
       case -2:
-        return '任务参数解析失败';
+        return I18n.tr('任务参数解析失败');
       case -3:
-        return '引擎已初始化';
+        return I18n.tr('引擎已初始化');
       case -4:
-        return '引擎未初始化';
+        return I18n.tr('引擎未初始化');
       case -5:
-        return 'ffmpeg 版本/配置不匹配，请确认使用随包 DLL';
+        return I18n.tr('ffmpeg 版本/配置不匹配，请确认使用随包 DLL');
       case -6:
-        return 'avox 引擎版本不匹配';
+        return I18n.tr('avox 引擎版本不匹配');
       case -7:
-        return '当前版本不支持这个任务类型';
+        return I18n.tr('当前版本不支持这个任务类型');
       case -8:
-        return '输入文件不存在或不可读';
+        return I18n.tr('输入文件不存在或不可读');
       case -9:
-        return '输出路径不可写或已存在';
+        return I18n.tr('输出路径不可写或已存在');
       case -10:
-        return '任务不存在';
+        return I18n.tr('任务不存在');
       case -11:
-        return '任务已结束，不能再操作';
+        return I18n.tr('任务已结束，不能再操作');
       case -12:
-        return '功能尚未实现';
+        return I18n.tr('功能尚未实现');
       case -13:
-        return '语音识别模型未下载';
+        return I18n.tr('语音识别模型未下载');
       case -14:
-        return '没有可提取的字幕轨';
+        return I18n.tr('没有可提取的字幕轨');
       case -15:
-        return '语音识别插件不可用';
+        return I18n.tr('语音识别插件不可用');
       case -16:
-        return '图像修复组件不可用';
+        return I18n.tr('图像修复组件不可用');
       case -17:
-        return '图像修复失败';
+        return I18n.tr('图像修复失败');
       default:
-        return '内部错误，请查看日志';
+        return I18n.tr('内部错误，请查看日志');
     }
   }
 }

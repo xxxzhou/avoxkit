@@ -9,13 +9,14 @@ import '../../core/media_index.dart';
 import '../tokens.dart';
 import 'filmstrip.dart';
 import 'time_viewport.dart';
+import '../../core/i18n.dart';
 
 /// 截取时间线: 缩略图条 + 时间尺 + 音频包络 + 关键帧刻度 + 入出点区间。
 ///
-/// 不是播放器时间线: 没有连续播放/播放头, 只负责"看形状、取舍区间"。
+/// 不是播放器时间线: 没有连续播放/播放头, 只负责I18n.tr("看形状、取舍区间")。
 /// 滚轮缩放, 拖空白处平移, 双击回到全片; 起点自动吸附到关键帧,
 /// 因为引擎按关键帧定位, 这样界面显示的就是产物真实起点。
-/// 悬停/拖动时通过 onScrub 告诉页面"现在该显示哪一刻的画面"。
+/// 悬停/拖动时通过 onScrub 告诉页面I18n.tr("现在该显示哪一刻的画面")。
 class AkTrimTimeline extends StatefulWidget {
   const AkTrimTimeline({
     super.key,
@@ -132,7 +133,7 @@ class _AkTrimTimelineState extends State<AkTrimTimeline> {
     }
   }
 
-  // 拖动时给页面一个"当前该看哪一帧"的时刻
+  // 拖动时给页面一个I18n.tr("当前该看哪一帧")的时刻
   int _dragTime(int start, int end) {
     return switch (_drag) {
       _DragMode.start => start,
@@ -429,7 +430,7 @@ class _TimelinePainter extends CustomPainter {
       Paint()..color = AkColors.bgDeep,
     );
     if (!hasFrames) {
-      final painter = _text(stripNote ?? '无画面预览', AkColors.faint, 10);
+      final painter = _text(stripNote ?? I18n.tr('无画面预览'), AkColors.faint, 10);
       painter.paint(
         canvas,
         Offset(

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
+import './i18n.dart';
 
 enum ModelPhase { notDownloaded, downloading, ready, failed }
 
@@ -236,7 +237,7 @@ class SttModel extends ModelPack {
       : super(files: files ?? defaultFiles);
 
   static const license = 'SenseVoice · Apache-2.0 / Silero VAD · MIT';
-  static const downloadSizeLabel = '约 230 MB';
+  static String get downloadSizeLabel => I18n.tr('约 230 MB');
 
   static const defaultFiles = <ModelFile>[
     ModelFile(
@@ -275,7 +276,7 @@ class InpaintModel extends ModelPack {
       : super(files: files ?? defaultFiles);
 
   static const license = 'LaMa · Apache-2.0 / YOLO26-Seg · AGPL-3.0';
-  static const downloadSizeLabel = '约 290 MB';
+  static String get downloadSizeLabel => I18n.tr('约 290 MB');
 
   static const defaultFiles = <ModelFile>[
     ModelFile(

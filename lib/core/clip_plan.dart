@@ -2,6 +2,8 @@
 /// 与 UI/引擎解耦, 单测直接覆盖。
 library;
 
+import './i18n.dart';
+
 /// 最短片段; 引擎侧是 40ms, UI 留出两帧余量
 const int kMinClipMs = 100;
 
@@ -140,28 +142,28 @@ ClipPlan buildClipPlan({
   required int endMs,
 }) {
   if (sourceDurationMs <= 0) {
-    return const ClipPlan(
+    return  ClipPlan(
       startMs: 0,
       endMs: 0,
       sourceDurationMs: 0,
-      error: '还在读取媒体信息',
+      error: I18n.tr('还在读取媒体信息'),
     );
   }
   final start = startMs.clamp(0, sourceDurationMs);
   final end = endMs.clamp(start, sourceDurationMs);
   final warnings = <String>[];
   if (endMs > sourceDurationMs) {
-    warnings.add('结束点超出片长，已按片尾处理');
+    warnings.add(I18n.tr('结束点超出片长，已按片尾处理'));
   }
   if (startMs < 0) {
-    warnings.add('开始点不能小于 0');
+    warnings.add(I18n.tr('开始点不能小于 0'));
   }
   if (end - start < kMinClipMs) {
     return ClipPlan(
       startMs: start,
       endMs: end,
       sourceDurationMs: sourceDurationMs,
-      error: end - start <= 0 ? '开始点必须早于结束点' : '片段太短，至少 0.1 秒',
+      error: end - start <= 0 ? I18n.tr('开始点必须早于结束点') : I18n.tr('片段太短，至少 0.1 秒'),
       warnings: warnings,
     );
   }

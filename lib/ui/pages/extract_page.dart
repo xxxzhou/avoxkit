@@ -16,9 +16,10 @@ import '../widgets/media_source.dart';
 import '../widgets/panel.dart';
 import '../widgets/task_summary.dart';
 import '../widgets/task_visual.dart';
+import '../../core/i18n.dart';
 
-const _videoTypes = XTypeGroup(
-  label: '视频',
+final _videoTypes = XTypeGroup(
+  label: I18n.tr('视频'),
   extensions: ['mkv', 'mp4', 'mov', 'avi', 'ts', 'flv', 'webm', 'wmv', 'm4v'],
 );
 
@@ -55,7 +56,7 @@ class _ExtractPageState extends State<ExtractPage> {
   bool _probing = false;
   bool _outputAuto = true;
 
-  // 默认直拷: "提取音频"多数只是要原轨, 重编码一条 143 分钟的音轨要几分钟
+  // 默认直拷: I18n.tr("提取音频")多数只是要原轨, 重编码一条 143 分钟的音轨要几分钟
   String _format = 'copy';
   int _bitrate = 192;
   int? _lastTaskId;
@@ -105,7 +106,7 @@ class _ExtractPageState extends State<ExtractPage> {
     if (p.equals(path, input)) {
       path = p.join(dir, '$stem.extracted.$ext');
     }
-    // 同名文件已存在时自动加序号; 用户仍可在"输出文件"里改名
+    // 同名文件已存在时自动加序号; 用户仍可在I18n.tr("输出文件")里改名
     final outStem = p.basenameWithoutExtension(path);
     if (File(path).existsSync()) {
       for (var i = 1; i < 100; i++) {
@@ -119,7 +120,7 @@ class _ExtractPageState extends State<ExtractPage> {
   }
 
   Future<void> _pickInput() async {
-    final file = await openFile(acceptedTypeGroups: const [_videoTypes]);
+    final file = await openFile(acceptedTypeGroups: [_videoTypes]);
     if (file == null) {
       return;
     }
@@ -217,15 +218,15 @@ class _ExtractPageState extends State<ExtractPage> {
     final input = _inputPath;
     final output = _outputPath;
     if (input == null) {
-      _snack('先选择一个视频文件');
+      _snack(I18n.tr('先选择一个视频文件'));
       return;
     }
     if (output == null || output.isEmpty) {
-      _snack('先选择输出位置');
+      _snack(I18n.tr('先选择输出位置'));
       return;
     }
     if (!File(input).existsSync()) {
-      _snack('输入文件不存在');
+      _snack(I18n.tr('输入文件不存在'));
       return;
     }
     setState(() => _submitting = true);
@@ -259,7 +260,7 @@ class _ExtractPageState extends State<ExtractPage> {
   Future<void> _submitFolder() async {
     final plan = _plan();
     if (plan == null || plan.pending.isEmpty) {
-      _snack('当前没有可处理的文件');
+      _snack(I18n.tr('当前没有可处理的文件'));
       return;
     }
     setState(() => _submitting = true);
@@ -272,7 +273,7 @@ class _ExtractPageState extends State<ExtractPage> {
         title: p.basename(_folder.root!),
         root: _folder.root!,
         kind: 'extract',
-        toolLabel: '提取音频',
+        toolLabel: I18n.tr('提取音频'),
         outputPolicy: _folder.policy.name,
         params: params,
         skipped: plan.skippedExisting,
@@ -310,7 +311,7 @@ class _ExtractPageState extends State<ExtractPage> {
 
   void _snack(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
+      SnackBar(content: T(message)),
     );
   }
 
@@ -325,10 +326,9 @@ class _ExtractPageState extends State<ExtractPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const PageHeader(
-                title: '提取音频',
-                description: '把一个或一整个文件夹的视频音轨单独导出。'
-                    '文件只在本机处理。',
+              PageHeader(
+                title: I18n.tr('提取音频'),
+                description: I18n.tr('把一个或一整个文件夹的视频音轨单独导出。' '文件只在本机处理。'),
               ),
               const SizedBox(height: 24),
               LayoutBuilder(
@@ -368,12 +368,12 @@ class _ExtractPageState extends State<ExtractPage> {
         children: [
           Row(
             children: [
-              Text(folderMode ? '文件夹' : '源文件', style: AkText.panelTitle),
+              T(folderMode ? I18n.tr('文件夹') : I18n.tr('源文件'), style: AkText.panelTitle),
               const Spacer(),
               if (_inputPath != null && !folderMode)
                 TextButton(
                   onPressed: _pickInput,
-                  child: const Text('重新选择'),
+                  child: const T('重新选择'),
                 ),
             ],
           ),
@@ -391,7 +391,7 @@ class _ExtractPageState extends State<ExtractPage> {
                   alignment: Alignment.centerLeft,
                   child: TextButton(
                     onPressed: _pickInput,
-                    child: const Text('改成处理单个文件'),
+                    child: const T('改成处理单个文件'),
                   ),
                 ),
               ],
@@ -402,7 +402,7 @@ class _ExtractPageState extends State<ExtractPage> {
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                T(
                   p.basename(_inputPath!),
                   style: AkText.body.copyWith(
                     color: AkColors.textStrong,
@@ -412,7 +412,7 @@ class _ExtractPageState extends State<ExtractPage> {
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 4),
-                Text(
+                T(
                   p.dirname(_inputPath!),
                   style: AkText.micro,
                   maxLines: 1,
@@ -425,7 +425,7 @@ class _ExtractPageState extends State<ExtractPage> {
                     child: LinearProgressIndicator(minHeight: 2),
                   )
                 else if (_probeError != null)
-                  Text(
+                  T(
                     _probeError!,
                     style: AkText.body.copyWith(color: AkColors.danger),
                   )
@@ -433,8 +433,7 @@ class _ExtractPageState extends State<ExtractPage> {
                   AkMediaInfo(media: _media!),
                   if (!hasAudio) ...[
                     const SizedBox(height: 12),
-                    Text(
-                      '这个文件没有音轨，无法提取。',
+                    T('这个文件没有音轨，无法提取。',
                       style: AkText.body.copyWith(color: AkColors.danger),
                     ),
                   ],
@@ -442,17 +441,17 @@ class _ExtractPageState extends State<ExtractPage> {
                 const SizedBox(height: 12),
                 TextButton(
                   onPressed: _pickFolder,
-                  child: const Text('改成处理整个文件夹'),
+                  child: const T('改成处理整个文件夹'),
                 ),
               ],
             ),
           const SizedBox(height: 20),
           const Divider(height: 1),
           const SizedBox(height: 16),
-          Text(
+          T(
             folderMode
-                ? '文件夹里没有音轨的视频会在提交时被拒绝，不影响其他文件。'
-                : '输出默认放在源文件旁边；原始音轨直拷最快，M4A/MP3 会重新编码。',
+                ? I18n.tr('文件夹里没有音轨的视频会在提交时被拒绝，不影响其他文件。')
+                : I18n.tr('输出默认放在源文件旁边；原始音轨直拷最快，M4A/MP3 会重新编码。'),
             style: AkText.micro,
           ),
           const SizedBox(height: 20),
@@ -496,37 +495,37 @@ class _ExtractPageState extends State<ExtractPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('输出设置', style: AkText.panelTitle),
+          T('输出设置', style: AkText.panelTitle),
           const SizedBox(height: 20),
-          Text('音频格式', style: AkText.label),
+          T('音频格式', style: AkText.label),
           const SizedBox(height: 8),
           SegmentedButton<String>(
             segments: [
-              const ButtonSegment(value: 'm4a', label: Text('M4A')),
-              const ButtonSegment(value: 'mp3', label: Text('MP3')),
+              const ButtonSegment(value: 'm4a', label: T('M4A')),
+              const ButtonSegment(value: 'mp3', label: T('MP3')),
               if (!folderMode)
-                const ButtonSegment(value: 'copy', label: Text('原始音轨')),
+                const ButtonSegment(value: 'copy', label: T('原始音轨')),
             ],
             selected: {_format},
             showSelectedIcon: false,
             onSelectionChanged: (values) => _selectFormat(values.first),
           ),
           const SizedBox(height: 8),
-          Text(
+          T(
             folderMode
-                ? '批量导出按扩展名生成 M4A 或 MP3；原始音轨需逐文件探测容器，暂不提供。'
+                ? I18n.tr('批量导出按扩展名生成 M4A 或 MP3；原始音轨需逐文件探测容器，暂不提供。')
                 : _format == 'copy'
-                ? '不重新编码，速度最快；目标容器不支持时会自动转码。'
-                : 'AAC 兼容性好；MP3 通用性最强。会按码率重新编码，比直拷慢。',
+                ? I18n.tr('不重新编码，速度最快；目标容器不支持时会自动转码。')
+                : I18n.tr('AAC 兼容性好；MP3 通用性最强。会按码率重新编码，比直拷慢。'),
             style: AkText.micro,
           ),
           if (_format != 'copy') ...[
             const SizedBox(height: 20),
             Row(
               children: [
-                Text('码率', style: AkText.label),
+                T('码率', style: AkText.label),
                 const Spacer(),
-                Text(
+                T(
                   '$_bitrate kbps',
                   style: AkText.mono.copyWith(color: AkColors.textStrong),
                 ),
@@ -535,10 +534,10 @@ class _ExtractPageState extends State<ExtractPage> {
             const SizedBox(height: 4),
             SegmentedButton<int>(
               segments: const [
-                ButtonSegment(value: 128, label: Text('128')),
-                ButtonSegment(value: 192, label: Text('192')),
-                ButtonSegment(value: 256, label: Text('256')),
-                ButtonSegment(value: 320, label: Text('320')),
+                ButtonSegment(value: 128, label: T('128')),
+                ButtonSegment(value: 192, label: T('192')),
+                ButtonSegment(value: 256, label: T('256')),
+                ButtonSegment(value: 320, label: T('320')),
               ],
               selected: {_bitrate},
               showSelectedIcon: false,
@@ -548,19 +547,19 @@ class _ExtractPageState extends State<ExtractPage> {
           ],
           if (_format == 'copy' && audioCodec is String) ...[
             const SizedBox(height: 12),
-            Text('源音轨：${audioCodec.toUpperCase()}', style: AkText.micro),
+            T('源音轨：${audioCodec.toUpperCase()}', style: AkText.micro),
           ],
           const SizedBox(height: 20),
           if (folderMode)
             OutputPolicyPicker(source: _folder)
           else ...[
-            Text('输出文件', style: AkText.label),
+            T('输出文件', style: AkText.label),
             const SizedBox(height: 8),
             Row(
               children: [
                 Expanded(
-                  child: Text(
-                    _outputPath == null ? '尚未选择' : p.basename(_outputPath!),
+                  child: T(
+                    _outputPath == null ? I18n.tr('尚未选择') : p.basename(_outputPath!),
                     style: AkText.body.copyWith(
                       color: _outputPath == null
                           ? AkColors.faint
@@ -573,13 +572,13 @@ class _ExtractPageState extends State<ExtractPage> {
                 const SizedBox(width: 8),
                 OutlinedButton(
                   onPressed: _pickOutput,
-                  child: const Text('选择'),
+                  child: const T('选择'),
                 ),
               ],
             ),
             if (_outputPath != null) ...[
               const SizedBox(height: 4),
-              Text(
+              T(
                 p.dirname(_outputPath!),
                 style: AkText.micro,
                 maxLines: 1,
@@ -590,16 +589,16 @@ class _ExtractPageState extends State<ExtractPage> {
           const SizedBox(height: 28),
           FilledButton(
             onPressed: canSubmit ? _submit : null,
-            child: Text(
+            child: T(
               _submitting
-                  ? '提交中…'
+                  ? I18n.tr('提交中…')
                   : folderMode
                   ? (_lastGroupId != null
                         ? '已提交 ${plan?.count ?? 0} 个文件'
                         : plan == null || plan.pending.isEmpty
-                        ? '没有可处理的文件'
+                        ? I18n.tr('没有可处理的文件')
                         : '开始处理 ${plan.count} 个文件')
-                  : '开始提取',
+                  : I18n.tr('开始提取'),
             ),
           ),
         ],

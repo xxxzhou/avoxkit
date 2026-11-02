@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/media_frame_source.dart';
 import '../tokens.dart';
+import '../../core/i18n.dart';
 
 /// 参考画面卡: 给定时刻, 先显示缓存里最近的一帧, 精确帧到了再换。
 /// 共享给截取/抽帧/去水印/字幕预览, 各页面不再自己写取帧与占位逻辑。
@@ -20,7 +21,7 @@ class AkFramePreview extends StatefulWidget {
   final MediaFrameSource source;
   final int timeMs;
 
-  /// 左上角角色, 如 "入点"/"出点"/"参考"
+  /// 左上角角色, 如 I18n.tr("入点")/I18n.tr("出点")/I18n.tr("参考")
   final String? label;
 
   /// 已格式化的时间; 由页面决定精度
@@ -84,7 +85,7 @@ class _AkFramePreviewState extends State<AkFramePreview> {
                     Center(
                       child: Padding(
                         padding: const EdgeInsets.all(16),
-                        child: Text(
+                        child: T(
                           widget.emptyText,
                           style: AkText.micro,
                           textAlign: TextAlign.center,
@@ -128,7 +129,7 @@ class _AkFramePreviewState extends State<AkFramePreview> {
               : AkColors.border,
         ),
       ),
-      child: Text(
+      child: T(
         text,
         style: AkText.micro.copyWith(
           color: accent ? AkColors.accent : AkColors.textStrong,

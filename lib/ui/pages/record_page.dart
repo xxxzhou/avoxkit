@@ -11,6 +11,7 @@ import '../../core/engine.dart';
 import '../../native/ak_bindings.dart';
 import '../tokens.dart';
 import '../widgets/panel.dart';
+import '../../core/i18n.dart';
 
 /// 录屏页(录屏与自动缩放方案 §9.4 v1): 显示器/区域/音频/帧率选择与起停控制。
 /// 只暴露引擎真实行为: 多输入=多文件(视频 mkv + 每路音频 wav), 不合成;
@@ -166,11 +167,11 @@ class _RecordPageState extends State<RecordPage> {
     }
     final monitor = _monitorId;
     if (monitor == null) {
-      setState(() => _error = '没有可用的显示器采集设备');
+      setState(() => _error = I18n.tr('没有可用的显示器采集设备'));
       return;
     }
     if (_outDir.text.trim().isEmpty) {
-      setState(() => _error = '请选择输出目录');
+      setState(() => _error = I18n.tr('请选择输出目录'));
       return;
     }
     int regionW = 0;
@@ -179,7 +180,7 @@ class _RecordPageState extends State<RecordPage> {
       regionW = int.tryParse(_regionW.text.trim()) ?? 0;
       regionH = int.tryParse(_regionH.text.trim()) ?? 0;
       if (regionW < 2 || regionH < 2 || regionW % 2 != 0 || regionH % 2 != 0) {
-        setState(() => _error = '自定义区域须为大于 1 的偶数像素（宽×高）');
+        setState(() => _error = I18n.tr('自定义区域须为大于 1 的偶数像素（宽×高）'));
         return;
       }
     }
@@ -260,8 +261,7 @@ class _RecordPageState extends State<RecordPage> {
     if (stopped['ok'] != true) {
       setState(() {
         _state = 'recording';
-        _error =
-            '停止录制失败（代码 ${stopped['code']}）；录制可能仍在继续，'
+        _error = '停止录制失败（代码 ${stopped['code']}）；录制可能仍在继续，'
             '可再点一次停止';
       });
       _startPolling();
@@ -361,7 +361,7 @@ class _RecordPageState extends State<RecordPage> {
     setState(() {
       _exporting = true;
       _exportPct = 0;
-      _exportStage = '准备';
+      _exportStage = I18n.tr('准备');
       _exportOut = null;
       _error = null;
     });
@@ -424,7 +424,7 @@ class _RecordPageState extends State<RecordPage> {
                 _exportOut = location.path;
               } else {
                 final message = status['error'] ?? '';
-                _error = state == 'cancelled' ? '导出已取消' : '导出失败: $message';
+                _error = state == 'cancelled' ? I18n.tr('导出已取消') : '导出失败: $message';
               }
             });
           }
@@ -474,18 +474,16 @@ class _RecordPageState extends State<RecordPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const PageHeader(
-            title: '录屏',
-            description:
-                '把显示器画面连同系统声音/麦克风录成视频文件，'
-                '本地处理，不上传。',
+          PageHeader(
+            title: I18n.tr('录屏'),
+            description: I18n.tr('把显示器画面连同系统声音/麦克风录成视频文件，' '本地处理，不上传。'),
           ),
           const SizedBox(height: 24),
           Panel(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('设置', style: AkText.panelTitle),
+                const T('设置', style: AkText.panelTitle),
                 const SizedBox(height: 16),
                 Wrap(
                   spacing: 24,
@@ -493,13 +491,13 @@ class _RecordPageState extends State<RecordPage> {
                   crossAxisAlignment: WrapCrossAlignment.end,
                   children: [
                     _dropdown<String>(
-                      label: '显示器',
+                      label: I18n.tr('显示器'),
                       value: _monitorId,
                       items: _monitors
                           .map(
                             (m) => DropdownMenuItem(
                               value: m['id'] as String,
-                              child: Text(
+                              child: T(
                                 '${m['name'] ?? m['id']}'
                                 '（${m['w'] ?? '?'}×${m['h'] ?? '?'}）',
                                 style: AkText.body,
@@ -512,13 +510,13 @@ class _RecordPageState extends State<RecordPage> {
                           : (v) => setState(() => _monitorId = v),
                     ),
                     _dropdown<double>(
-                      label: '帧率',
+                      label: I18n.tr('帧率'),
                       value: _fps,
                       items: const [60.0, 30.0]
                           .map(
                             (v) => DropdownMenuItem(
                               value: v,
-                              child: Text(
+                              child: T(
                                 '${v.toInt()} fps',
                                 style: AkText.body,
                               ),
@@ -537,19 +535,19 @@ class _RecordPageState extends State<RecordPage> {
                   runSpacing: 8,
                   children: [
                     _switch(
-                      '录下系统光标',
+                      I18n.tr('录下系统光标'),
                       _cursor,
                       !active,
                       (v) => setState(() => _cursor = v),
                     ),
                     _switch(
-                      '麦克风',
+                      I18n.tr('麦克风'),
                       _mic && _hasMic,
                       !active && _hasMic,
                       (v) => setState(() => _mic = v),
                     ),
                     _switch(
-                      '系统声音',
+                      I18n.tr('系统声音'),
                       _loop && _hasLoop,
                       !active && _hasLoop,
                       (v) => setState(() => _loop = v),
@@ -559,16 +557,14 @@ class _RecordPageState extends State<RecordPage> {
                 if (_mic && !_hasMic)
                   Padding(
                     padding: const EdgeInsets.only(top: 6),
-                    child: Text(
-                      '没有检测到麦克风，音轨将跳过。',
+                    child: T('没有检测到麦克风，音轨将跳过。',
                       style: AkText.body.copyWith(color: AkColors.muted),
                     ),
                   ),
                 if (!_hasLoop && Platform.isMacOS)
                   Padding(
                     padding: const EdgeInsets.only(top: 6),
-                    child: Text(
-                      'macOS 暂不支持录制系统声音。',
+                    child: T('macOS 暂不支持录制系统声音。',
                       style: AkText.body.copyWith(color: AkColors.muted),
                     ),
                   ),
@@ -579,7 +575,7 @@ class _RecordPageState extends State<RecordPage> {
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     _switch(
-                      '整个屏幕',
+                      I18n.tr('整个屏幕'),
                       _fullScreen,
                       active,
                       (v) => setState(() => _fullScreen = v),
@@ -595,15 +591,15 @@ class _RecordPageState extends State<RecordPage> {
                                 enabled: !active,
                                 keyboardType: TextInputType.number,
                                 style: AkText.body,
-                                decoration: const InputDecoration(
+                                decoration: InputDecoration(
                                   isDense: true,
-                                  labelText: '宽(px)',
+                                  labelText: I18n.tr('宽(px)'),
                                 ),
                               ),
                             ),
                             const Padding(
                               padding: EdgeInsets.symmetric(horizontal: 8),
-                              child: Text('×', style: AkText.body),
+                              child: T('×', style: AkText.body),
                             ),
                             Expanded(
                               child: TextField(
@@ -611,9 +607,9 @@ class _RecordPageState extends State<RecordPage> {
                                 enabled: !active,
                                 keyboardType: TextInputType.number,
                                 style: AkText.body,
-                                decoration: const InputDecoration(
+                                decoration: InputDecoration(
                                   isDense: true,
-                                  labelText: '高(px)',
+                                  labelText: I18n.tr('高(px)'),
                                 ),
                               ),
                             ),
@@ -621,8 +617,7 @@ class _RecordPageState extends State<RecordPage> {
                         ),
                       ),
                     if (!_fullScreen)
-                      Text(
-                        '从显示器左上角起，偶数像素',
+                      T('从显示器左上角起，偶数像素',
                         style: AkText.body.copyWith(color: AkColors.muted),
                       ),
                   ],
@@ -635,16 +630,16 @@ class _RecordPageState extends State<RecordPage> {
                         controller: _outDir,
                         enabled: !active,
                         style: AkText.body,
-                        decoration: const InputDecoration(
+                        decoration: InputDecoration(
                           isDense: true,
-                          labelText: '输出目录',
+                          labelText: I18n.tr('输出目录'),
                         ),
                       ),
                     ),
                     const SizedBox(width: 12),
                     OutlinedButton(
                       onPressed: active ? null : _pickDir,
-                      child: const Text('选择…'),
+                      child: const T('选择…'),
                     ),
                   ],
                 ),
@@ -657,7 +652,7 @@ class _RecordPageState extends State<RecordPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('控制', style: AkText.panelTitle),
+                const T('控制', style: AkText.panelTitle),
                 const SizedBox(height: 16),
                 Row(
                   children: [
@@ -676,7 +671,7 @@ class _RecordPageState extends State<RecordPage> {
                       icon: Icon(
                         active ? Icons.stop : Icons.fiber_manual_record,
                       ),
-                      label: Text(active ? '停止录制' : '开始录制'),
+                      label: T(active ? I18n.tr('停止录制') : I18n.tr('开始录制')),
                     ),
                     const SizedBox(width: 12),
                     OutlinedButton(
@@ -685,26 +680,25 @@ class _RecordPageState extends State<RecordPage> {
                               (_state == 'recording' || _state == 'paused')
                           ? _pauseResume
                           : null,
-                      child: Text(_state == 'paused' ? '继续' : '暂停'),
+                      child: T(_state == 'paused' ? I18n.tr('继续') : I18n.tr('暂停')),
                     ),
                     const SizedBox(width: 24),
-                    Text(
+                    T(
                       _state == 'stopping'
-                          ? '状态: 正在停止…'
+                          ? I18n.tr('状态: 正在停止…')
                           : _finalizing
-                          ? '状态: 整理素材中…'
+                          ? I18n.tr('状态: 整理素材中…')
                           : active
                           ? '状态: $_state · 已录 '
                                 '${_clockMs < 0 ? 0 : (_clockMs / 1000).toStringAsFixed(1)}s'
-                          : '状态: 就绪',
+                          : I18n.tr('状态: 就绪'),
                       style: AkText.body.copyWith(color: AkColors.muted),
                     ),
                   ],
                 ),
                 if (active) ...[
                   const SizedBox(height: 12),
-                  Text(
-                    '实际 ${_fpsActual.toStringAsFixed(1)} fps · 帧 $_frames · '
+                  T('实际 ${_fpsActual.toStringAsFixed(1)} fps · 帧 $_frames · '
                     '丢弃 $_dropped'
                     '${_geometry.isEmpty ? '' : ' · 画面 $_geometry'}',
                     style: AkText.mono,
@@ -712,7 +706,7 @@ class _RecordPageState extends State<RecordPage> {
                 ],
                 if (_lastResult != null) ...[
                   const SizedBox(height: 12),
-                  Text(_lastResult!, style: AkText.body),
+                  T(_lastResult!, style: AkText.body),
                 ],
                 if (_sessionDir != null) ...[
                   const SizedBox(height: 12),
@@ -721,13 +715,13 @@ class _RecordPageState extends State<RecordPage> {
                       FilledButton.icon(
                         onPressed: _exporting ? null : _export,
                         icon: const Icon(Icons.movie_creation_outlined),
-                        label: Text(_exporting ? '导出中…' : '导出成片'),
+                        label: T(_exporting ? I18n.tr('导出中…') : I18n.tr('导出成片')),
                       ),
                       if (_exportOut != null) ...[
                         const SizedBox(width: 12),
                         OutlinedButton(
                           onPressed: () => _reveal(_exportOut!),
-                          child: const Text('打开所在文件夹'),
+                          child: const T('打开所在文件夹'),
                         ),
                       ],
                     ],
@@ -737,7 +731,7 @@ class _RecordPageState extends State<RecordPage> {
                   const SizedBox(height: 10),
                   LinearProgressIndicator(value: _exportPct / 100.0),
                   const SizedBox(height: 6),
-                  Text(
+                  T(
                     '${_exportStage.isEmpty ? '处理中' : _exportStage} · '
                     '$_exportPct%',
                     style: AkText.mono,
@@ -745,11 +739,11 @@ class _RecordPageState extends State<RecordPage> {
                 ],
                 if (_exportOut != null) ...[
                   const SizedBox(height: 8),
-                  Text('成片: $_exportOut', style: AkText.body),
+                  T('成片: $_exportOut', style: AkText.body),
                 ],
                 if (_error != null) ...[
                   const SizedBox(height: 12),
-                  Text(
+                  T(
                     _error!,
                     style: AkText.body.copyWith(color: AkColors.danger),
                   ),
@@ -762,16 +756,16 @@ class _RecordPageState extends State<RecordPage> {
     );
   }
 
-  Widget _dropdown<T>({
+  Widget _dropdown<V>({
     required String label,
-    required T? value,
-    required List<DropdownMenuItem<T>> items,
-    required ValueChanged<T?>? onChanged,
+    required V? value,
+    required List<DropdownMenuItem<V>> items,
+    required ValueChanged<V?>? onChanged,
   }) {
     return SizedBox(
       width: 260,
-      child: DropdownButtonFormField<T>(
-        key: ValueKey<T?>(value),
+      child: DropdownButtonFormField<V>(
+        key: ValueKey<V?>(value),
         initialValue: value,
         items: items,
         onChanged: onChanged,
@@ -791,7 +785,7 @@ class _RecordPageState extends State<RecordPage> {
       children: [
         Switch(value: value, onChanged: enabled ? onChanged : null),
         const SizedBox(width: 6),
-        Text(label, style: AkText.body),
+        T(label, style: AkText.body),
       ],
     );
   }

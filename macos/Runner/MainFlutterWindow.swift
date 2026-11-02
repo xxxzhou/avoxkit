@@ -14,6 +14,14 @@ class MainFlutterWindow: NSWindow {
     self.contentViewController = flutterViewController
     self.setFrame(windowFrame, display: true)
 
+    // 商店截图: 2x 屏下 content 1280x800 正好出 2560x1600 像素
+    if let spec = ProcessInfo.processInfo.environment["AVOXKIT_WINDOW_SIZE"] {
+      let parts = spec.split(separator: "x").compactMap { Double($0) }
+      if parts.count == 2 {
+        self.setContentSize(NSSize(width: parts[0], height: parts[1]))
+      }
+    }
+
     RegisterGeneratedPlugins(registry: flutterViewController)
 
     super.awakeFromNib()

@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import '../core/engine.dart';
@@ -12,6 +14,7 @@ import 'pages/subtitle_page.dart';
 import 'pages/tasks_page.dart';
 import 'tokens.dart';
 import 'widgets/panel.dart';
+import '../core/i18n.dart';
 
 class AppShell extends StatefulWidget {
   const AppShell({
@@ -28,9 +31,19 @@ class AppShell extends StatefulWidget {
 }
 
 class _AppShellState extends State<AppShell> {
-  int _index = 0;
+  // 商店截图构建可指定首屏; 默认仍是录屏
+  int _index = const int.fromEnvironment('AVOXKIT_START_TAB');
 
-  static const _items = [
+  @override
+  void initState() {
+    super.initState();
+    final env = int.tryParse(Platform.environment['AVOXKIT_START_TAB'] ?? '');
+    if (env != null && env >= 0 && env < _items.length) {
+      _index = env;
+    }
+  }
+
+  static final _items = [
     _NavSpec('录屏', Icons.radio_button_checked),
     _NavSpec('转换', Icons.swap_horiz),
     _NavSpec('截取片段', Icons.content_cut),
@@ -134,7 +147,7 @@ class _Sidebar extends StatelessWidget {
               ),
               child: compact
                   ? const Center(
-                      child: Text(
+                      child: T(
                         'AK',
                         style: TextStyle(
                           color: AkColors.accent,
@@ -147,7 +160,7 @@ class _Sidebar extends StatelessWidget {
                   : Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
+                        const T(
                           'AVOXKIT',
                           style: TextStyle(
                             color: AkColors.textStrong,
@@ -157,7 +170,7 @@ class _Sidebar extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: 4),
-                        Text('本地音视频工具箱', style: AkText.micro),
+                        T('本地音视频工具箱', style: AkText.micro),
                       ],
                     ),
             ),
@@ -191,8 +204,8 @@ class _Sidebar extends StatelessWidget {
                         ),
                         const SizedBox(width: 8),
                         Expanded(
-                          child: Text(
-                            engine.ready ? '引擎就绪' : '引擎异常',
+                          child: T(
+                            engine.ready ? I18n.tr('引擎就绪') : I18n.tr('引擎异常'),
                             style: AkText.micro,
                           ),
                         ),
@@ -250,7 +263,7 @@ class _NavItem extends StatelessWidget {
             ),
             if (!compact) ...[
               const SizedBox(width: 12),
-              Text(
+              T(
                 spec.label,
                 style: TextStyle(
                   fontSize: 13,

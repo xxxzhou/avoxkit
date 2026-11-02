@@ -4,11 +4,13 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 
+import '../../core/app_paths.dart';
 import '../../core/batch.dart';
 import '../../core/convert_plan.dart';
 import '../../core/engine.dart';
 import '../../core/folder_scan.dart';
 import '../../core/folder_source.dart';
+import '../../core/sample_media.dart';
 import '../../core/task_store.dart';
 import '../tokens.dart';
 import '../widgets/folder_card.dart';
@@ -17,11 +19,15 @@ import '../widgets/task_visual.dart';
 import '../widgets/media_source.dart';
 import '../widgets/panel.dart';
 import '../widgets/task_summary.dart';
+import '../../core/i18n.dart';
 
-const _videoTypes = XTypeGroup(
-  label: '视频',
+final _videoTypes = XTypeGroup(
+  label: I18n.tr('视频'),
   extensions: ['mkv', 'mp4', 'mov', 'avi', 'ts', 'flv', 'webm', 'wmv', 'm4v'],
 );
+
+/// 商店截图/审核演示用: 只在显式 dart-define 时启动即载入示例。
+const _autoDemo = bool.fromEnvironment('AVOXKIT_AUTO_DEMO');
 
 class ConvertPage extends StatefulWidget {
   const ConvertPage({
@@ -83,6 +89,9 @@ class _ConvertPageState extends State<ConvertPage> {
     _h265Available = _encoderAvailable('hevc');
     _aacAvailable = _encoderAvailable('aac');
     _mp3Available = _encoderAvailable('mp3');
+    if (_autoDemo) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _loadSample());
+    }
   }
 
   bool _encoderAvailable(String codec) {
@@ -151,18 +160,21 @@ class _ConvertPageState extends State<ConvertPage> {
         )
       : null;
 
-  String _suggestedOutput(String input) => p.join(
-        p.dirname(input),
+  String _suggestedOutput(String input) => AppPaths.suggested(
+        input,
         '${p.basenameWithoutExtension(input)}.converted.'
         '${_extensionFor(input)}',
       );
 
   Future<void> _pickInput() async {
-    final file = await openFile(acceptedTypeGroups: const [_videoTypes]);
+    final file = await openFile(acceptedTypeGroups: [_videoTypes]);
     if (file == null) {
       return;
     }
-    final path = file.path;
+    await _useInput(file.path);
+  }
+
+  Future<void> _useInput(String path) async {
     _folder.clear();
     setState(() {
       _inputPath = path;
@@ -189,6 +201,24 @@ class _ConvertPageState extends State<ConvertPage> {
       }
       setState(() {
         _probeError = error is EngineException ? error.message : '$error';
+        _probing = false;
+      });
+    }
+  }
+
+  Future<void> _loadSample() async {
+    try {
+      final path = await SampleMedia.materialize();
+      if (!mounted) {
+        return;
+      }
+      await _useInput(path);
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _probeError = '示例加载失败: $error';
         _probing = false;
       });
     }
@@ -306,19 +336,19 @@ class _ConvertPageState extends State<ConvertPage> {
     final output = _outputPath;
     final plan = _singlePlan;
     if (input == null) {
-      _snack('先选择一个视频文件');
+      _snack(I18n.tr('先选择一个视频文件'));
       return;
     }
     if (output == null || output.isEmpty) {
-      _snack('先选择输出位置');
+      _snack(I18n.tr('先选择输出位置'));
       return;
     }
     if (!File(input).existsSync()) {
-      _snack('输入文件不存在');
+      _snack(I18n.tr('输入文件不存在'));
       return;
     }
     if (plan == null) {
-      _snack('还在分析源文件，请稍候');
+      _snack(I18n.tr('还在分析源文件，请稍候'));
       return;
     }
     if (plan.error != null) {
@@ -369,12 +399,12 @@ class _ConvertPageState extends State<ConvertPage> {
   Future<void> _submitFolder() async {
     final plan = _plan();
     if (plan == null || plan.pending.isEmpty) {
-      _snack('当前没有可处理的文件');
+      _snack(I18n.tr('当前没有可处理的文件'));
       return;
     }
     final settings = _settings;
     if (settings.isIdentity) {
-      _snack('输出设置与原文件一致，没有需要处理的文件');
+      _snack(I18n.tr('输出设置与原文件一致，没有需要处理的文件'));
       return;
     }
 
@@ -443,7 +473,7 @@ class _ConvertPageState extends State<ConvertPage> {
         title: p.basename(_folder.root!),
         root: _folder.root!,
         kind: 'convert',
-        toolLabel: '转换',
+        toolLabel: I18n.tr('转换'),
         outputPolicy: _folder.policy.name,
         params: const {},
         skipped: plan.skippedExisting + skippedNoop + unsupported,
@@ -495,7 +525,7 @@ class _ConvertPageState extends State<ConvertPage> {
 
   void _snack(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
+      SnackBar(content: T(message)),
     );
   }
 
@@ -510,10 +540,9 @@ class _ConvertPageState extends State<ConvertPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const PageHeader(
-                title: '转换',
-                description: '改容器、编码或分辨率。只改容器时自动直接封装，'
-                    '不重新编码。文件只在本机处理。',
+              PageHeader(
+                title: I18n.tr('转换'),
+                description: I18n.tr('改容器、编码或分辨率。只改容器时自动直接封装，' '不重新编码。文件只在本机处理。'),
               ),
               const SizedBox(height: 24),
               LayoutBuilder(
@@ -552,12 +581,12 @@ class _ConvertPageState extends State<ConvertPage> {
         children: [
           Row(
             children: [
-              Text(folderMode ? '文件夹' : '源文件', style: AkText.panelTitle),
+              T(folderMode ? I18n.tr('文件夹') : I18n.tr('源文件'), style: AkText.panelTitle),
               const Spacer(),
               if (_inputPath != null && !folderMode)
                 TextButton(
                   onPressed: _pickInput,
-                  child: const Text('重新选择'),
+                  child: const T('重新选择'),
                 ),
             ],
           ),
@@ -591,18 +620,22 @@ class _ConvertPageState extends State<ConvertPage> {
                   alignment: Alignment.centerLeft,
                   child: TextButton(
                     onPressed: _pickInput,
-                    child: const Text('改成处理单个文件'),
+                    child: const T('改成处理单个文件'),
                   ),
                 ),
               ],
             )
           else if (_inputPath == null)
-            AkSourcePicker(onFile: _pickInput, onFolder: _pickFolder)
+            AkSourcePicker(
+              onFile: _pickInput,
+              onFolder: _pickFolder,
+              onSample: _loadSample,
+            )
           else
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                T(
                   p.basename(_inputPath!),
                   style: AkText.body.copyWith(
                     color: AkColors.textStrong,
@@ -612,7 +645,7 @@ class _ConvertPageState extends State<ConvertPage> {
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 4),
-                Text(
+                T(
                   p.dirname(_inputPath!),
                   style: AkText.micro,
                   maxLines: 1,
@@ -625,7 +658,7 @@ class _ConvertPageState extends State<ConvertPage> {
                     child: LinearProgressIndicator(minHeight: 2),
                   )
                 else if (_probeError != null)
-                  Text(
+                  T(
                     _probeError!,
                     style: AkText.body.copyWith(color: AkColors.danger),
                   )
@@ -634,19 +667,19 @@ class _ConvertPageState extends State<ConvertPage> {
                 const SizedBox(height: 12),
                 TextButton(
                   onPressed: _pickFolder,
-                  child: const Text('改成处理整个文件夹'),
+                  child: const T('改成处理整个文件夹'),
                 ),
               ],
             ),
           const SizedBox(height: 20),
           const Divider(height: 1),
           const SizedBox(height: 16),
-          Text(
+          T(
             folderMode
-                ? '逐文件判定：只换容器就直拷；编码或分辨率变化时自动转码。'
-                    '输出已存在会跳过。'
-                : '支持 mkv / mp4 / mov / avi / ts / flv / webm / wmv。'
-                    '输出默认放在源文件旁边。',
+                ? I18n.tr('逐文件判定：只换容器就直拷；编码或分辨率变化时自动转码。'
+                    '输出已存在会跳过。')
+                : I18n.tr('支持 mkv / mp4 / mov / avi / ts / flv / webm / wmv。'
+                    '输出默认放在源文件旁边。'),
             style: AkText.micro,
           ),
           const SizedBox(height: 20),
@@ -683,10 +716,10 @@ class _ConvertPageState extends State<ConvertPage> {
         children: [
           Row(
             children: [
-              Text('输出设置', style: AkText.panelTitle),
+              T('输出设置', style: AkText.panelTitle),
               const Spacer(),
-              Text(
-                folderMode ? '逐文件自动判定' : '实时判定',
+              T(
+                folderMode ? I18n.tr('逐文件自动判定') : I18n.tr('实时判定'),
                 style: AkText.micro,
               ),
             ],
@@ -696,18 +729,18 @@ class _ConvertPageState extends State<ConvertPage> {
             spacing: 8,
             runSpacing: 8,
             children: [
-              _presetButton('仅换容器 MP4', 'remux'),
+              _presetButton(I18n.tr('仅换容器 MP4'), 'remux'),
               _presetButton('H.265 · 1080p', 'h265'),
             ],
           ),
           const SizedBox(height: 20),
-          Text('容器', style: AkText.label),
+          T('容器', style: AkText.label),
           const SizedBox(height: 8),
           Wrap(
             spacing: 8,
             runSpacing: 8,
             children: [
-              _choiceChip('同源', _container == 'source',
+              _choiceChip(I18n.tr('同源'), _container == 'source',
                   () => _selectContainer('source')),
               _choiceChip(
                   'MP4', _container == 'mp4', () => _selectContainer('mp4')),
@@ -718,14 +751,14 @@ class _ConvertPageState extends State<ConvertPage> {
             ],
           ),
           const SizedBox(height: 18),
-          Text('视频编码', style: AkText.label),
+          T('视频编码', style: AkText.label),
           const SizedBox(height: 8),
           Wrap(
             spacing: 8,
             runSpacing: 8,
             children: [
               _choiceChip(
-                  '同源', _video == 'source', () => _selectVideo('source')),
+                  I18n.tr('同源'), _video == 'source', () => _selectVideo('source')),
               _choiceChip(
                 'H.264',
                 _video == 'h264',
@@ -741,17 +774,17 @@ class _ConvertPageState extends State<ConvertPage> {
           if (!_h265Available)
             Padding(
               padding: const EdgeInsets.only(top: 6),
-              child: Text('本机未检测到 H.265 编码器，将自动回退 H.264',
+              child: T('本机未检测到 H.265 编码器，将自动回退 H.264',
                   style: AkText.micro),
             ),
           const SizedBox(height: 18),
-          Text('分辨率', style: AkText.label),
+          T('分辨率', style: AkText.label),
           const SizedBox(height: 8),
           Wrap(
             spacing: 8,
             runSpacing: 8,
             children: [
-              _choiceChip('同源', _height == null,
+              _choiceChip(I18n.tr('同源'), _height == null,
                   () => setState(() => _height = null)),
               for (final height in const [2160, 1440, 1080, 720, 480])
                 _choiceChip(
@@ -762,14 +795,14 @@ class _ConvertPageState extends State<ConvertPage> {
             ],
           ),
           const SizedBox(height: 18),
-          Text('音频编码', style: AkText.label),
+          T('音频编码', style: AkText.label),
           const SizedBox(height: 8),
           Wrap(
             spacing: 8,
             runSpacing: 8,
             children: [
               _choiceChip(
-                  '同源', _audio == 'source', () => _selectAudio('source')),
+                  I18n.tr('同源'), _audio == 'source', () => _selectAudio('source')),
               _choiceChip(
                 'AAC',
                 _audio == 'aac',
@@ -784,13 +817,13 @@ class _ConvertPageState extends State<ConvertPage> {
           ),
           if (audioEncoding) ...[
             const SizedBox(height: 18),
-            Text('音频码率', style: AkText.label),
+            T('音频码率', style: AkText.label),
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,
               runSpacing: 8,
               children: [
-                _choiceChip('自动', _audioBitrate == -1,
+                _choiceChip(I18n.tr('自动'), _audioBitrate == -1,
                     () => setState(() => _audioBitrate = -1)),
                 for (final bitrate in const [128, 192, 256])
                   _choiceChip(
@@ -805,9 +838,9 @@ class _ConvertPageState extends State<ConvertPage> {
             const SizedBox(height: 18),
             Row(
               children: [
-                Text('质量', style: AkText.label),
+                T('质量', style: AkText.label),
                 const Spacer(),
-                Text(
+                T(
                   _quality.round().toString(),
                   style: AkText.mono.copyWith(color: AkColors.textStrong),
                 ),
@@ -820,19 +853,19 @@ class _ConvertPageState extends State<ConvertPage> {
               divisions: 20,
               onChanged: (value) => setState(() => _quality = value),
             ),
-            Text('数值越大越清晰、文件越大', style: AkText.micro),
+            T('数值越大越清晰、文件越大', style: AkText.micro),
             const SizedBox(height: 8),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
-              title: Text('硬件编码', style: AkText.label),
-              subtitle: Text(
+              title: T('硬件编码', style: AkText.label),
+              subtitle: T(
                 widget.engine.hardwareVtAvailable
-                    ? '使用 VideoToolbox 硬件编码'
+                    ? I18n.tr('使用 VideoToolbox 硬件编码')
                     : !widget.engine.hardwareAvailable
-                        ? '本机未检测到可用硬编，将使用软件编码'
+                        ? I18n.tr('本机未检测到可用硬编，将使用软件编码')
                         : _hardware
-                            ? '更快，画质与体积略逊软编；失败时自动回退'
-                            : '默认软编：画质与体积更可控，速度较慢',
+                            ? I18n.tr('更快，画质与体积略逊软编；失败时自动回退')
+                            : I18n.tr('默认软编：画质与体积更可控，速度较慢'),
                 style: AkText.micro,
               ),
               value: widget.engine.hardwareVtAvailable ||
@@ -848,13 +881,13 @@ class _ConvertPageState extends State<ConvertPage> {
           if (folderMode)
             OutputPolicyPicker(source: _folder)
           else ...[
-            Text('输出文件', style: AkText.label),
+            T('输出文件', style: AkText.label),
             const SizedBox(height: 8),
             Row(
               children: [
                 Expanded(
-                  child: Text(
-                    _outputPath == null ? '尚未选择' : p.basename(_outputPath!),
+                  child: T(
+                    _outputPath == null ? I18n.tr('尚未选择') : p.basename(_outputPath!),
                     style: AkText.body.copyWith(
                       color: _outputPath == null
                           ? AkColors.faint
@@ -867,13 +900,13 @@ class _ConvertPageState extends State<ConvertPage> {
                 const SizedBox(width: 8),
                 OutlinedButton(
                   onPressed: _pickOutput,
-                  child: const Text('选择'),
+                  child: const T('选择'),
                 ),
               ],
             ),
             if (_outputPath != null) ...[
               const SizedBox(height: 4),
-              Text(
+              T(
                 p.dirname(_outputPath!),
                 style: AkText.micro,
                 maxLines: 1,
@@ -886,7 +919,7 @@ class _ConvertPageState extends State<ConvertPage> {
           const SizedBox(height: 20),
           FilledButton(
             onPressed: canSubmit ? _submit : null,
-            child: Text(_submitLabel(plan, single)),
+            child: T(_submitLabel(plan, single)),
           ),
         ],
       ),
@@ -899,25 +932,25 @@ class _ConvertPageState extends State<ConvertPage> {
         return _decisionBox(
           color: AkColors.muted,
           icon: Icons.check_circle_outline,
-          title: '输出设置与原文件一致，无需转换',
-          detail: '改容器、编码或分辨率后即可开始。',
+          title: I18n.tr('输出设置与原文件一致，无需转换'),
+          detail: I18n.tr('改容器、编码或分辨率后即可开始。'),
         );
       }
       return _decisionBox(
         color: AkColors.state,
         icon: Icons.auto_awesome,
-        title: '逐文件自动判定',
-        detail: '能直拷就直拷；编码或分辨率变化时自动转码。'
-            '提交后会显示封装与转码数量。',
-        note: '封装仍需完整读写文件；云盘/机械盘会慢一些。',
+        title: I18n.tr('逐文件自动判定'),
+        detail: I18n.tr('能直拷就直拷；编码或分辨率变化时自动转码。'
+            '提交后会显示封装与转码数量。'),
+        note: I18n.tr('封装仍需完整读写文件；云盘/机械盘会慢一些。'),
       );
     }
     if (single == null) {
       return _decisionBox(
         color: AkColors.muted,
         icon: Icons.hourglass_empty,
-        title: '等待文件信息',
-        detail: '选择文件后这里会显示将采用封装还是转码。',
+        title: I18n.tr('等待文件信息'),
+        detail: I18n.tr('选择文件后这里会显示将采用封装还是转码。'),
       );
     }
     if (single.error != null) {
@@ -944,7 +977,7 @@ class _ConvertPageState extends State<ConvertPage> {
       title: single.reason,
       detail: single.detail,
       note: remux
-          ? '不重新编码，但仍需完整读写文件；云盘/机械盘会受限于磁盘速度。'
+          ? I18n.tr('不重新编码，但仍需完整读写文件；云盘/机械盘会受限于磁盘速度。')
           : null,
       warnings: single.warnings,
     );
@@ -974,7 +1007,7 @@ class _ConvertPageState extends State<ConvertPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                T(
                   title,
                   style: AkText.body.copyWith(
                     color: color == AkColors.muted
@@ -985,18 +1018,18 @@ class _ConvertPageState extends State<ConvertPage> {
                 ),
                 if (detail.isNotEmpty) ...[
                   const SizedBox(height: 4),
-                  Text(detail, style: AkText.micro),
+                  T(detail, style: AkText.micro),
                 ],
                 if (note != null && note.isNotEmpty) ...[
                   const SizedBox(height: 4),
-                  Text(
+                  T(
                     note,
                     style: AkText.micro.copyWith(color: AkColors.faint),
                   ),
                 ],
                 for (final warning in warnings) ...[
                   const SizedBox(height: 4),
-                  Text(
+                  T(
                     warning,
                     style: AkText.micro.copyWith(color: AkColors.accent),
                   ),
@@ -1011,32 +1044,32 @@ class _ConvertPageState extends State<ConvertPage> {
 
   String _submitLabel(BatchPlan? batch, ConversionPlan? single) {
     if (_submitting) {
-      return _submitProgress ?? '处理中…';
+      return _submitProgress ?? I18n.tr('处理中…');
     }
     if (_folder.hasFolder) {
       if (_settings.isIdentity) {
-        return '无需转换';
+        return I18n.tr('无需转换');
       }
       if (batch == null || batch.pending.isEmpty) {
-        return '没有可处理的文件';
+        return I18n.tr('没有可处理的文件');
       }
       return '分析并处理 ${batch.count} 个文件';
     }
     if (single == null) {
-      return _probing ? '正在分析源文件…' : '等待文件信息';
+      return _probing ? I18n.tr('正在分析源文件…') : I18n.tr('等待文件信息');
     }
     if (single.error != null) {
-      return '当前设置无法转换';
+      return I18n.tr('当前设置无法转换');
     }
     if (single.noop) {
-      return '无需转换';
+      return I18n.tr('无需转换');
     }
-    return single.kind == 'remux' ? '开始封装' : '开始转换';
+    return single.kind == 'remux' ? I18n.tr('开始封装') : I18n.tr('开始转换');
   }
 
   Widget _choiceChip(String label, bool selected, VoidCallback? onTap) {
     return ChoiceChip(
-      label: Text(label),
+      label: T(label),
       selected: selected,
       showCheckmark: false,
       visualDensity: VisualDensity.compact,
@@ -1063,7 +1096,7 @@ class _ConvertPageState extends State<ConvertPage> {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         textStyle: AkText.micro,
       ),
-      child: Text(label),
+      child: T(label),
     );
   }
 }
