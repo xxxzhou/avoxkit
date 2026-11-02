@@ -2,7 +2,7 @@
 
 **[English](README.md) | 简体中文**
 
-[![Download](https://img.shields.io/badge/Download-v0.1.0-2ea44f?logo=github)](https://github.com/xxxzhou/avoxkit/releases/latest)
+[![Download](https://img.shields.io/badge/Download-v0.2.0-2ea44f?logo=github)](https://github.com/xxxzhou/avoxkit/releases/latest)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20x64%20%7C%20macOS%20arm64-blue)](https://github.com/xxxzhou/avoxkit/releases/latest)
 [![License](https://img.shields.io/badge/License-AGPL--3.0-orange)](LICENSE)
 [![Privacy](https://img.shields.io/badge/Privacy-local--only-success)](PRIVACY.md)
@@ -25,9 +25,9 @@
 
 ## 下载 Avoxkit（Windows / macOS）
 
-[**下载最新版 →**](https://github.com/xxxzhou/avoxkit/releases/latest) — 免费 · Windows x64 · macOS arm64（Apple Silicon）· v0.1.0 · 2026-10-31 发布。无需账号 · 无水印 · 不上传。macOS 版已 Developer ID 签名并公证。
+[**下载最新版 →**](https://github.com/xxxzhou/avoxkit/releases/latest) — 免费 · Windows x64 · macOS arm64（Apple Silicon）· v0.2.0 · 2026-11-02 发布。无需账号 · 无水印 · 不上传。macOS 版已 Developer ID 签名并公证。
 
-直接下载：[Windows x64 ZIP](https://github.com/xxxzhou/avoxkit/releases/download/v0.1.0/Avoxkit-0.1.0-windows-x64.zip) · [macOS arm64 DMG](https://github.com/xxxzhou/avoxkit/releases/download/v0.1.0/Avoxkit-0.1.0-arm64.dmg)
+直接下载：[Windows x64 ZIP](https://github.com/xxxzhou/avoxkit/releases/download/v0.2.0/Avoxkit-0.2.0-windows-x64.zip) · [macOS arm64 DMG](https://github.com/xxxzhou/avoxkit/releases/download/v0.2.0/Avoxkit-0.2.0-arm64.dmg)
 
 [全部版本](https://github.com/xxxzhou/avoxkit/releases)
 
@@ -50,7 +50,7 @@
 
 ### 录屏：显示器或固定区域，30 / 60 fps
 
-录制显示器画面，或从显示器左上角起录一个固定区域，帧率可选 30 或 60 fps。麦克风和系统声音分别开关（系统声音在 0.1.0 中仅 Windows 可用）。停止后可以导出 H.264 + AAC 的 MP4，默认带深色渐变背景、留白、圆角和阴影。
+录制显示器画面，或从显示器左上角起录一个固定区域，帧率可选 30 或 60 fps。麦克风和系统声音分别开关（系统声音目前仅 Windows 可用）。停止后可以导出 H.264 + AAC 的 MP4，默认带深色渐变背景、留白、圆角和阴影。
 
 - 每次录制按时间新建文件夹，保留原始画面、混音预览成片和工程文件，方便重复导出。
 - 系统光标默认不烧进原始画面，导出时按轨迹重绘；打开开关则直接录进画面。
@@ -138,29 +138,29 @@
 
 ## 常见问题
 
-- **Avoxkit 真的免费吗？有水印吗？** 真的免费。0.1.0 的所有功能都不收费，没有会员等级，成品也不会被加上水印。
+- **Avoxkit 真的免费吗？有水印吗？** 真的免费。所有功能都不收费，没有会员等级，成品也不会被加上水印。
 - **会把我选择的视频、图片上传吗？** 不会。媒体文件只在这台电脑上读写，没有云端处理，也没有账号和遥测。语音识别和图像修复的模型按需下载，下载请求不包含你的媒体文件。
 - **需要注册账号或一直联网吗？** 不需要账号。转换、录屏、截取、提取音频和导出内嵌字幕都可以离线完成；语音识别（约 230 MB）和图像修复（约 290 MB）首次使用时下载模型，之后可离线运行。
 - **支持哪些格式？** 输入支持 MKV、MP4、MOV、AVI、TS、FLV、WebM、WMV、M4V；输出容器为 MP4、MKV、MOV，视频编码可选 H.264 / H.265，音频可选 AAC / MP3。只换容器且编码兼容时会直接封装，不重新编码。
 - **截取片段是无损剪切吗？** 不是。选中片段会重新编码为 H.264 / H.265 视频和 AAC 音频。起点会吸附到前一个关键帧，终点可能有半秒内偏差，最短片段 0.1 秒。
-- **macOS 能录系统声音吗？** 0.1.0 不能。系统声音录制仅 Windows 可用；macOS 录屏可以录麦克风。两个平台都支持录制显示器或固定区域，帧率可选 30 或 60 fps。
+- **macOS 能录系统声音吗？** 目前不能。系统声音录制仅 Windows 可用；macOS 录屏可以录麦克风。两个平台都支持录制显示器或固定区域，帧率可选 30 或 60 fps。
 - **批量处理有数量限制吗？** 单次文件夹扫描最多 5000 个文件，超过会停止扫描并提示缩小范围。任务默认一次处理一个，批量组可以整组取消或重试失败项；转换、提取音频和提取字幕的批量任务会跳过已存在的输出。
 
 ## 系统要求与下载
 
 | 项目 | 说明 |
 |---|---|
-| 版本 | 0.1.0（2026-10-31 发布） |
-| 界面 | 简体中文 |
+| 版本 | 0.2.0（2026-11-02 发布） |
+| 界面 | 15 种语言：简体中文、繁體中文、English、日本語、한국어、Français、Deutsch、Español、Italiano、Português、Português (Brasil)、Русский、Bahasa Indonesia、ไทย、Tiếng Việt |
 | Windows | Windows x64 桌面版 |
-| Windows 下载 | [Avoxkit-0.1.0-windows-x64.zip](https://github.com/xxxzhou/avoxkit/releases/download/v0.1.0/Avoxkit-0.1.0-windows-x64.zip) · [SHA-256](https://github.com/xxxzhou/avoxkit/releases/download/v0.1.0/Avoxkit-0.1.0-windows-x64.zip.sha256) |
+| Windows 下载 | [Avoxkit-0.2.0-windows-x64.zip](https://github.com/xxxzhou/avoxkit/releases/download/v0.2.0/Avoxkit-0.2.0-windows-x64.zip) · [SHA-256](https://github.com/xxxzhou/avoxkit/releases/download/v0.2.0/Avoxkit-0.2.0-windows-x64.zip.sha256) |
 | macOS | macOS arm64（Apple Silicon）；已 Developer ID 签名并公证 |
-| macOS 下载 | [Avoxkit-0.1.0-arm64.dmg](https://github.com/xxxzhou/avoxkit/releases/download/v0.1.0/Avoxkit-0.1.0-arm64.dmg) · [SHA-256](https://github.com/xxxzhou/avoxkit/releases/download/v0.1.0/Avoxkit-0.1.0-arm64.dmg.sha256) |
+| macOS 下载 | [Avoxkit-0.2.0-arm64.dmg](https://github.com/xxxzhou/avoxkit/releases/download/v0.2.0/Avoxkit-0.2.0-arm64.dmg) · [SHA-256](https://github.com/xxxzhou/avoxkit/releases/download/v0.2.0/Avoxkit-0.2.0-arm64.dmg.sha256) |
 | 网络 | 语音识别和图像修复首次使用时按需下载模型（约 230 MB / 约 290 MB）；转换、录屏、截取、提取音频可离线使用。 |
 | 下载 | [GitHub Releases](https://github.com/xxxzhou/avoxkit/releases/latest) |
 | 许可 | [AGPL-3.0](LICENSE) |
 
-[**下载 Avoxkit 0.1.0 →**](https://github.com/xxxzhou/avoxkit/releases/latest)
+[**下载 Avoxkit 0.2.0 →**](https://github.com/xxxzhou/avoxkit/releases/latest)
 
 ## 从源码构建
 

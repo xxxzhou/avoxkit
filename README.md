@@ -2,7 +2,7 @@
 
 **English | [简体中文](README.zh-CN.md)**
 
-[![Download](https://img.shields.io/badge/Download-v0.1.0-2ea44f?logo=github)](https://github.com/xxxzhou/avoxkit/releases/latest)
+[![Download](https://img.shields.io/badge/Download-v0.2.0-2ea44f?logo=github)](https://github.com/xxxzhou/avoxkit/releases/latest)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20x64%20%7C%20macOS%20arm64-blue)](https://github.com/xxxzhou/avoxkit/releases/latest)
 [![License](https://img.shields.io/badge/License-AGPL--3.0-orange)](LICENSE)
 [![Privacy](https://img.shields.io/badge/Privacy-local--only-success)](PRIVACY.md)
@@ -25,9 +25,9 @@ All media processing happens locally: no account, no subscription, no output wat
 
 ## Download Avoxkit for Windows and macOS
 
-[**Download the latest release →**](https://github.com/xxxzhou/avoxkit/releases/latest) — free · Windows x64 · macOS arm64 (Apple Silicon) · v0.1.0 · released 2026-10-31. No account · No watermark · No upload. The macOS build is Developer ID signed and notarized.
+[**Download the latest release →**](https://github.com/xxxzhou/avoxkit/releases/latest) — free · Windows x64 · macOS arm64 (Apple Silicon) · v0.2.0 · released 2026-11-02. No account · No watermark · No upload. The macOS build is Developer ID signed and notarized.
 
-Direct downloads: [Windows x64 ZIP](https://github.com/xxxzhou/avoxkit/releases/download/v0.1.0/Avoxkit-0.1.0-windows-x64.zip) · [macOS arm64 DMG](https://github.com/xxxzhou/avoxkit/releases/download/v0.1.0/Avoxkit-0.1.0-arm64.dmg)
+Direct downloads: [Windows x64 ZIP](https://github.com/xxxzhou/avoxkit/releases/download/v0.2.0/Avoxkit-0.2.0-windows-x64.zip) · [macOS arm64 DMG](https://github.com/xxxzhou/avoxkit/releases/download/v0.2.0/Avoxkit-0.2.0-arm64.dmg)
 
 [All releases](https://github.com/xxxzhou/avoxkit/releases)
 
@@ -50,12 +50,12 @@ Change the container, video codec, resolution or audio codec. If only the contai
 
 ### Screen recorder: display or fixed region, 30 or 60 fps
 
-Record a display, or a fixed region starting at the display's top-left corner, at 30 or 60 fps. Microphone and system audio have separate switches (system audio is Windows-only in 0.1.0). After stopping, export an H.264 + AAC MP4 with a dark gradient background, padding, rounded corners and a shadow.
+Record a display, or a fixed region starting at the display's top-left corner, at 30 or 60 fps. Microphone and system audio have separate switches (system audio is currently Windows-only). After stopping, export an H.264 + AAC MP4 with a dark gradient background, padding, rounded corners and a shadow.
 
 - Each recording gets a timestamped folder with the original capture, a mixed preview MP4 and a project file for re-export.
 - The system cursor is not burned into the original capture by default; it is redrawn on export. Turn the option on to record it directly.
 - Landscape output is 1920×1080, portrait 1080×1920 and square 1080×1080; the app window is excluded from the recording.
-- No camera picture-in-picture, and the export framing is fixed: no zoom, crop, segments or custom background in 0.1.0.
+- No camera picture-in-picture, and the export framing is fixed: no zoom, crop, segments or custom background currently.
 
 ![Avoxkit screen recorder settings in English recording a 2560x1440 display at 60 fps with microphone and system audio](docs/screenshots/en/avoxkit-screen-recorder-windows-en.png)
 
@@ -138,29 +138,29 @@ Read the full [privacy policy](PRIVACY.md).
 
 ## FAQ
 
-- **Is Avoxkit really free?** Yes. Every feature in 0.1.0 is free, with no subscription, no paid tier and no watermark on your output.
+- **Is Avoxkit really free?** Yes. Every feature is free, with no subscription, no paid tier and no watermark on your output.
 - **Does Avoxkit upload my videos, images or audio?** No. Media is read from and written to your own disk. There is no account, no cloud processing and no telemetry. Optional on-device models for speech recognition and image repair are downloaded on demand; your media is not part of those requests.
 - **Do I need an account or an internet connection?** No account. Conversion, screen recording, trimming, audio extraction and embedded-subtitle export work without internet. Speech recognition (~230 MB) and image repair (~290 MB) download their models once, then run offline.
 - **Which formats can Avoxkit convert?** Input: MKV, MP4, MOV, AVI, TS, FLV, WebM, WMV and M4V. Output containers: MP4, MKV and MOV, with H.264 or H.265 video and AAC or MP3 audio. When only the container changes and the codecs are supported, the file is remuxed instead of re-encoded.
 - **Is trimming a lossless cut?** No. The selected segment is re-encoded to H.264 or H.265 video with AAC audio. The start snaps to the nearest preceding keyframe, the end may differ by up to about half a second, and the minimum clip is 0.1 seconds.
-- **Can I record system audio on macOS?** Not in 0.1.0. System audio capture is Windows-only; on macOS the recorder can capture the microphone. Both platforms can record a display or a fixed region at 30 or 60 fps.
+- **Can I record system audio on macOS?** Not currently. System audio capture is Windows-only; on macOS the recorder can capture the microphone. Both platforms can record a display or a fixed region at 30 or 60 fps.
 - **Does Avoxkit support batch processing?** Yes. Convert, extract audio, extract subtitles and image repair accept folders. A scan is capped at 5,000 files, jobs run one at a time, and a batch can be cancelled as a group with failed items retried.
 
 ## Requirements and download
 
 | Item | Details |
 |---|---|
-| Version | 0.1.0, released 2026-10-31 |
-| Interface | 15 languages in the current source: English, Simplified/Traditional Chinese, Japanese, Korean, French, German, Spanish, Italian, Portuguese, Brazilian Portuguese, Russian, Indonesian, Thai, Vietnamese. The v0.1.0 release still uses the Chinese UI. |
+| Version | 0.2.0, released 2026-11-02 |
+| Interface | 15 languages: English, Simplified/Traditional Chinese, Japanese, Korean, French, German, Spanish, Italian, Portuguese, Brazilian Portuguese, Russian, Indonesian, Thai, Vietnamese. |
 | Windows | Windows x64 desktop |
-| Windows download | [Avoxkit-0.1.0-windows-x64.zip](https://github.com/xxxzhou/avoxkit/releases/download/v0.1.0/Avoxkit-0.1.0-windows-x64.zip) · [SHA-256](https://github.com/xxxzhou/avoxkit/releases/download/v0.1.0/Avoxkit-0.1.0-windows-x64.zip.sha256) |
+| Windows download | [Avoxkit-0.2.0-windows-x64.zip](https://github.com/xxxzhou/avoxkit/releases/download/v0.2.0/Avoxkit-0.2.0-windows-x64.zip) · [SHA-256](https://github.com/xxxzhou/avoxkit/releases/download/v0.2.0/Avoxkit-0.2.0-windows-x64.zip.sha256) |
 | macOS | macOS arm64 (Apple Silicon); Developer ID signed and notarized |
-| macOS download | [Avoxkit-0.1.0-arm64.dmg](https://github.com/xxxzhou/avoxkit/releases/download/v0.1.0/Avoxkit-0.1.0-arm64.dmg) · [SHA-256](https://github.com/xxxzhou/avoxkit/releases/download/v0.1.0/Avoxkit-0.1.0-arm64.dmg.sha256) |
+| macOS download | [Avoxkit-0.2.0-arm64.dmg](https://github.com/xxxzhou/avoxkit/releases/download/v0.2.0/Avoxkit-0.2.0-arm64.dmg) · [SHA-256](https://github.com/xxxzhou/avoxkit/releases/download/v0.2.0/Avoxkit-0.2.0-arm64.dmg.sha256) |
 | Network | Optional model downloads: about 230 MB for speech recognition, about 290 MB for image repair. Conversion, recording, trimming and audio extraction work offline. |
 | Downloads | [GitHub Releases](https://github.com/xxxzhou/avoxkit/releases/latest) |
 | License | [AGPL-3.0](LICENSE) |
 
-[**Download Avoxkit 0.1.0 →**](https://github.com/xxxzhou/avoxkit/releases/latest)
+[**Download Avoxkit 0.2.0 →**](https://github.com/xxxzhou/avoxkit/releases/latest)
 
 ## Build from source
 

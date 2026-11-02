@@ -1,10 +1,10 @@
 # avoxkit 源码获取（AGPL-3.0 / LGPL-2.1 合规）
 
-avoxkit 0.1.0 的 macOS 分发包内含 **AGPL-3.0** 的 avoxkit、**AGPL-3.0 / 商业双许可**的 avox 引擎（本次为 commercial/LGPL 渠道），以及 **LGPL-2.1-or-later** 的 FFmpeg。按许可证要求，现提供对应源码。
+avoxkit 0.2.0 的 macOS 分发包内含 **AGPL-3.0** 的 avoxkit、**AGPL-3.0 / 商业双许可**的 avox 引擎（本次为 commercial/LGPL 渠道），以及 **LGPL-2.1-or-later** 的 FFmpeg。按许可证要求，现提供对应源码。
 
 ## 获取方式（任选一种）
 
-1. **公开仓库**：`https://github.com/xxxzhou/avoxkit` 的 `v0.1.0` tag；GitHub 同时提供 Source code (zip/tar.gz)。
+1. **公开仓库**：`https://github.com/xxxzhou/avoxkit` 的 `v0.2.0` tag；GitHub 同时提供 Source code (zip/tar.gz)。
 2. **随发布包提供**：每个 release 同时提供 `avoxkit-<version>-source.tar.gz`，内容包括本仓源码、`script/`、`macos/`、`native/`、`pubspec.*`，以及 `script/ffmpeg/build_ffmpeg_macos.sh` 的 configure。
 3. **书面申请**：在本仓库开 issue，标题 `source request`，注明需要的版本。该书面要约自该版本发布之日起 **三年内** 有效。
 
