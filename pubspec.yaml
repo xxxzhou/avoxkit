@@ -39,7 +39,8 @@ msix_config:
   certificate_path: build/avoxkit-store.pfx
   certificate_password: avx123
   capabilities: internetClient,runFullTrust,microphone
-  languages: zh-cn
+  # 与 assets/i18n 的 15 个 locale 对齐
+  languages: zh-cn, zh-tw, en-us, ja-jp, ko-kr, fr-fr, de-de, es-es, it-it, pt-pt, pt-br, ru-ru, id-id, th-th, vi-vn
 
 flutter:
   uses-material-design: true
