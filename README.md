@@ -105,9 +105,11 @@ Remove watermarks, station logos and overlay text from images. Automatic mode de
 - Folder batches use automatic detection only; images where nothing is detected are skipped and marked in the task list.
 - Models are downloaded on demand (~290 MB, SHA-256 verified) and are not bundled. Inpainting is generative, so keep the original for important images.
 
-![Avoxkit image watermark remover with automatic watermark detection and a repaired-image preview](docs/screenshots/avoxkit-watermark-remover-windows.png)
+| Before | After |
+|---|---|
+| ![Before: a red heart overlay on a mountain meadow](docs/screenshots/ak-repair-before.webp) | ![After: the red heart is gone and the grass is filled in](docs/screenshots/ak-repair-after.webp) |
 
-*The image repair page in auto-detect mode: the preview shows the repaired result, with a switch back to the original for comparison.*
+*Manual brushing removes the overlay, and LaMa fills in the background. Inpainting is generative, so the result may differ from the original.*
 
 ### Batch video processing and the task queue
 
